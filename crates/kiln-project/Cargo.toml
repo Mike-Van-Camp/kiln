@@ -1,0 +1,13 @@
+[package]
+name = "kiln-project"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Project save/load and annotation storage for Kiln"
+
+[dependencies]
+kiln-core = { path = "../kiln-core" }
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
+log = "0.4"
+thiserror = "2"

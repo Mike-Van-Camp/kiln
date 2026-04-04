@@ -38,17 +38,16 @@ fn mnemonic_color(mnemonic: &str) -> Color32 {
     } else if m == "call" || m == "bl" || m == "blr" || m == "blx" || m.starts_with("call") {
         SyntaxColors::MNEMONIC_CALL
     } else if m.starts_with('j')
-        || m.starts_with('b')
+        || (m.starts_with('b')
             && (m == "b"
                 || m.starts_with("b.")
-                || m.starts_with("br")
                 || m.starts_with("bne")
                 || m.starts_with("beq")
                 || m.starts_with("blt")
                 || m.starts_with("bgt")
                 || m.starts_with("bge")
                 || m.starts_with("ble")
-                || m.starts_with("bx"))
+                || m.starts_with("bx")))
         || m == "loop"
         || m == "loope"
         || m == "loopne"
@@ -116,7 +115,7 @@ fn colorize_operands(operands: &str) -> Vec<(String, Color32)> {
             // Decimal immediate
             current.clear();
             while let Some(&dc) = chars.peek() {
-                if dc.is_ascii_hexdigit() || dc == 'x' || dc == 'X' {
+                if dc.is_ascii_digit() {
                     current.push(dc);
                     chars.next();
                 } else {

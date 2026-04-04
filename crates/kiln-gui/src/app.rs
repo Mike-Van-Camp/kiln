@@ -8,6 +8,7 @@ use kiln_core::model::BinaryImage;
 use std::path::PathBuf;
 
 use crate::views::console_view::ConsoleView;
+use crate::views::diff_view::DiffView;
 use crate::views::disasm_view::DisasmView;
 use crate::views::exports_view::ExportsView;
 use crate::views::graph_view::GraphView;
@@ -29,6 +30,7 @@ pub enum ActiveTab {
     Exports,
     Types,
     Console,
+    Diff,
 }
 
 /// State for the Go-to-Address dialog.
@@ -223,6 +225,8 @@ pub struct KilnApp {
     pub debug_info: DebugInfo,
     /// Script console view (Sprint 13).
     pub console_view: ConsoleView,
+    /// Binary diff view (Sprint 14).
+    pub diff_view: DiffView,
 }
 
 impl Default for KilnApp {
@@ -258,6 +262,7 @@ impl Default for KilnApp {
             apply_type_dialog: ApplyTypeDialog::default(),
             debug_info: DebugInfo::default(),
             console_view: ConsoleView::default(),
+            diff_view: DiffView::default(),
         }
     }
 }
@@ -378,6 +383,10 @@ impl KilnApp {
                 self.active_tab = ActiveTab::Disassembly;
                 self.disasm_view.scroll_to_address = Some(addr);
             }
+            ActiveTab::Diff => {
+                self.active_tab = ActiveTab::Disassembly;
+                self.disasm_view.scroll_to_address = Some(addr);
+            }
         }
     }
 
@@ -402,6 +411,10 @@ impl KilnApp {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open...  Ctrl+O").clicked() {
                         self.open_file_dialog();
+                        ui.close_menu();
+                    }
+                    if ui.button("Open Diff...").clicked() {
+                        self.open_diff_dialog();
                         ui.close_menu();
                     }
                     ui.separator();
@@ -604,6 +617,12 @@ impl KilnApp {
                 {
                     self.active_tab = ActiveTab::Console;
                 }
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Diff, "Diff")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Diff;
+                }
             });
         });
     }
@@ -621,7 +640,7 @@ impl KilnApp {
                 ActiveTab::Hex => self.render_section_sidebar(ui),
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
                 ActiveTab::Graph => self.render_graph_function_sidebar(ui),
-                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console => {
+                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console | ActiveTab::Diff => {
                     self.render_info_sidebar(ui);
                 }
             });
@@ -784,6 +803,76 @@ impl KilnApp {
         if let Some(path) = rfd::FileDialog::new().set_title("Open Binary").pick_file() {
             self.open_binary(&path);
         }
+    }
+
+    /// Show two sequential file dialogs, load both binaries, and compute their diff (Sprint 14).
+    fn open_diff_dialog(&mut self) {
+        let old_path = rfd::FileDialog::new()
+            .set_title("Open Old Binary (base)")
+            .pick_file();
+        let Some(old_path) = old_path else { return };
+
+        let new_path = rfd::FileDialog::new()
+            .set_title("Open New Binary (changed)")
+            .pick_file();
+        let Some(new_path) = new_path else { return };
+
+        let old_image = match kiln_core::load_binary(&old_path) {
+            Ok(img) => img,
+            Err(e) => {
+                self.error_dialog = Some(format!("Failed to load old binary: {}", e));
+                return;
+            }
+        };
+        let new_image = match kiln_core::load_binary(&new_path) {
+            Ok(img) => img,
+            Err(e) => {
+                self.error_dialog = Some(format!("Failed to load new binary: {}", e));
+                return;
+            }
+        };
+
+        let old_insns = match kiln_core::disasm::disassemble_executable_sections(&old_image) {
+            Ok(insns) => insns,
+            Err(e) => {
+                self.error_dialog = Some(format!("Failed to disassemble old binary: {}", e));
+                return;
+            }
+        };
+        let new_insns = match kiln_core::disasm::disassemble_executable_sections(&new_image) {
+            Ok(insns) => insns,
+            Err(e) => {
+                self.error_dialog = Some(format!("Failed to disassemble new binary: {}", e));
+                return;
+            }
+        };
+
+        let mut old_analysis = kiln_core::analysis::AnalysisDatabase::new();
+        old_analysis.index_instructions(old_insns);
+        old_analysis.run_analysis(&old_image);
+
+        let mut new_analysis = kiln_core::analysis::AnalysisDatabase::new();
+        new_analysis.index_instructions(new_insns);
+        new_analysis.run_analysis(&new_image);
+
+        let result =
+            kiln_core::diff::compute_diff(&old_analysis, &new_analysis, &old_image, &new_image);
+
+        self.diff_view.diff_result = Some(result);
+        self.diff_view.selected_function = None;
+        self.diff_view.export_message = None;
+        self.diff_view.old_filename = old_image.filename.clone();
+        self.diff_view.new_filename = new_image.filename.clone();
+        self.active_tab = ActiveTab::Diff;
+        self.status_message = format!(
+            "Diff: {} vs {} | {} functions compared",
+            old_image.filename,
+            new_image.filename,
+            self.diff_view
+                .diff_result
+                .as_ref()
+                .map_or(0, |r| r.function_matches.len())
+        );
     }
 
     /// Show file dialog to pick and run a .rhai script file (Sprint 13).
@@ -1624,7 +1713,7 @@ impl eframe::App for KilnApp {
 
         // Main central panel
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console {
+            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console && self.active_tab != ActiveTab::Diff {
                 ui.centered_and_justified(|ui| {
                     ui.heading("Open a binary file to get started\n(File → Open or Ctrl+O)");
                 });
@@ -1686,6 +1775,9 @@ impl eframe::App for KilnApp {
                 }
                 ActiveTab::Console => {
                     self.console_view.render(ui, &self.analysis, &mut self.project);
+                }
+                ActiveTab::Diff => {
+                    self.diff_view.render(ui);
                 }
             }
         });

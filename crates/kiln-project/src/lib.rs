@@ -72,6 +72,26 @@ impl Project {
         entry.label = Some(label);
     }
 
+    /// Remove the comment at an address.
+    pub fn remove_comment(&mut self, addr: u64) {
+        if let Some(entry) = self.annotations.get_mut(&addr) {
+            entry.comment = None;
+            if entry.label.is_none() {
+                self.annotations.remove(&addr);
+            }
+        }
+    }
+
+    /// Remove the label at an address.
+    pub fn remove_label(&mut self, addr: u64) {
+        if let Some(entry) = self.annotations.get_mut(&addr) {
+            entry.label = None;
+            if entry.comment.is_none() {
+                self.annotations.remove(&addr);
+            }
+        }
+    }
+
     /// Get the comment at an address.
     pub fn get_comment(&self, addr: u64) -> Option<&str> {
         self.annotations

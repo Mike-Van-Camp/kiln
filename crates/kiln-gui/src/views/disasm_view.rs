@@ -17,14 +17,20 @@ use kiln_core::model::{BinaryImage, Instruction, XrefType};
 pub struct DisasmView {
     /// If set, scroll to this address on the next frame.
     pub scroll_to_address: Option<u64>,
+    /// The currently selected/clicked instruction address.
+    pub selected_address: Option<u64>,
     /// Cached sorted address list (rebuilt on invalidate_cache).
-    cached_addresses: Vec<u64>,
+    pub(crate) cached_addresses: Vec<u64>,
     /// Cached symbol map: address → symbol name (rebuilt on invalidate_cache).
     cached_symbols: HashMap<u64, String>,
     /// Whether the cache is valid.
     cache_valid: bool,
     /// Pending navigation request from clicking an address operand.
     pending_navigation: Option<u64>,
+    /// Pending comment request from context menu (address to comment on).
+    pending_comment_addr: Option<u64>,
+    /// Pending rename request from context menu (address to rename).
+    pending_rename_addr: Option<u64>,
 }
 
 /// Color palette for syntax highlighting.
@@ -44,6 +50,7 @@ impl SyntaxColors {
     const NOP: Color32 = Color32::from_rgb(100, 100, 100); // Dark gray for nops
     const XREF: Color32 = Color32::from_rgb(120, 180, 255); // Light blue for xrefs
     const CLICKABLE_ADDR: Color32 = Color32::from_rgb(100, 200, 255); // Cyan for clickable addresses
+    const COMMENT: Color32 = Color32::from_rgb(100, 200, 100); // Green for comments
 }
 
 /// Classify a mnemonic for syntax coloring.
@@ -368,8 +375,23 @@ impl DisasmView {
         self.pending_navigation.take()
     }
 
+    /// Take the pending comment address (if any), clearing it.
+    pub fn take_pending_comment(&mut self) -> Option<u64> {
+        self.pending_comment_addr.take()
+    }
+
+    /// Take the pending rename address (if any), clearing it.
+    pub fn take_pending_rename(&mut self) -> Option<u64> {
+        self.pending_rename_addr.take()
+    }
+
     /// Ensure caches are populated.
-    fn ensure_cache(&mut self, analysis: &AnalysisDatabase, image: Option<&BinaryImage>) {
+    fn ensure_cache(
+        &mut self,
+        analysis: &AnalysisDatabase,
+        image: Option<&BinaryImage>,
+        project: &kiln_project::Project,
+    ) {
         if self.cache_valid {
             return;
         }
@@ -394,6 +416,13 @@ impl DisasmView {
                 .or_insert_with(|| func.name.clone());
         }
 
+        // Project labels override everything (highest priority)
+        for (addr, annotation) in &project.annotations {
+            if let Some(label) = &annotation.label {
+                self.cached_symbols.insert(*addr, label.clone());
+            }
+        }
+
         self.cache_valid = true;
     }
 
@@ -403,6 +432,7 @@ impl DisasmView {
         ui: &mut Ui,
         analysis: &AnalysisDatabase,
         image: Option<&BinaryImage>,
+        project: &kiln_project::Project,
     ) {
         let mono_font = FontId::monospace(13.0);
 
@@ -414,7 +444,7 @@ impl DisasmView {
         }
 
         // Ensure caches are populated
-        self.ensure_cache(analysis, image);
+        self.ensure_cache(analysis, image, project);
 
         // Clone addresses for use inside closure (avoids borrow conflict with &self)
         let addresses = self.cached_addresses.clone();
@@ -463,7 +493,7 @@ impl DisasmView {
                 }
                 let addr = addresses[row_idx];
                 if let Some(insn) = analysis.get_instruction(addr) {
-                    self.render_instruction_row(ui, insn, &mono_font, analysis);
+                    self.render_instruction_row(ui, insn, &mono_font, analysis, project);
                 }
             }
         });
@@ -476,6 +506,7 @@ impl DisasmView {
         insn: &Instruction,
         font: &FontId,
         analysis: &AnalysisDatabase,
+        project: &kiln_project::Project,
     ) {
         // Check for symbol label at this address (O(1) lookup)
         if let Some(name) = self.cached_symbols.get(&insn.address) {
@@ -484,6 +515,17 @@ impl DisasmView {
                     RichText::new(format!("{}:", name))
                         .font(font.clone())
                         .color(SyntaxColors::SYMBOL_LABEL),
+                );
+            });
+        }
+
+        // Show comment above instruction if present
+        if let Some(comment) = project.get_comment(insn.address) {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!("; {}", comment))
+                        .font(font.clone())
+                        .color(SyntaxColors::COMMENT),
                 );
             });
         }
@@ -582,10 +624,16 @@ impl DisasmView {
             }
         });
 
-        // Right-click context menu (Sprint 6)
+        // Track selected address on click
+        let insn_addr = insn.address;
+        if response.response.clicked() {
+            self.selected_address = Some(insn_addr);
+        }
+
+        // Right-click context menu
         response.response.context_menu(|ui| {
             if ui.button("Copy Address").clicked() {
-                ui.ctx().copy_text(format!("0x{:08X}", insn.address));
+                ui.ctx().copy_text(format!("0x{:08X}", insn_addr));
                 ui.close_menu();
             }
             if ui.button("Copy Instruction").clicked() {
@@ -599,6 +647,15 @@ impl DisasmView {
                 ui.close_menu();
             }
             ui.separator();
+            if ui.button("Add Comment  ;").clicked() {
+                self.pending_comment_addr = Some(insn_addr);
+                ui.close_menu();
+            }
+            if ui.button("Rename  N").clicked() {
+                self.pending_rename_addr = Some(insn_addr);
+                ui.close_menu();
+            }
+            ui.separator();
             if let Some(addr) = extract_operand_address(&insn.operands) {
                 if ui.button(format!("Go to 0x{:X}", addr)).clicked() {
                     self.pending_navigation = Some(addr);
@@ -606,7 +663,7 @@ impl DisasmView {
                 }
             }
             // Show xrefs from this address
-            let xrefs_from = analysis.xrefs_from(insn.address);
+            let xrefs_from = analysis.xrefs_from(insn_addr);
             if !xrefs_from.is_empty() {
                 ui.separator();
                 ui.label("Xrefs from:");
@@ -626,7 +683,7 @@ impl DisasmView {
                 }
             }
             // Show xrefs to this address
-            let xrefs_to = analysis.xrefs_to(insn.address);
+            let xrefs_to = analysis.xrefs_to(insn_addr);
             if !xrefs_to.is_empty() {
                 ui.separator();
                 ui.label("Xrefs to:");

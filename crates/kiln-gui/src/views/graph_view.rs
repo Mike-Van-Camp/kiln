@@ -107,7 +107,10 @@ impl GraphView {
         let layout = self.layout.as_ref().unwrap();
 
         // Handle pan/zoom input
-        let response = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::click_and_drag());
+        let response = ui.allocate_rect(
+            ui.available_rect_before_wrap(),
+            egui::Sense::click_and_drag(),
+        );
 
         if response.dragged_by(egui::PointerButton::Primary) {
             self.pan_offset += response.drag_delta();
@@ -131,10 +134,12 @@ impl GraphView {
             let points: Vec<Pos2> = edge
                 .points
                 .iter()
-                .map(|p| Pos2::new(
-                    p.x * self.zoom + canvas_origin.x,
-                    p.y * self.zoom + canvas_origin.y,
-                ))
+                .map(|p| {
+                    Pos2::new(
+                        p.x * self.zoom + canvas_origin.x,
+                        p.y * self.zoom + canvas_origin.y,
+                    )
+                })
                 .collect();
 
             if points.len() >= 2 {
@@ -143,7 +148,13 @@ impl GraphView {
                     painter.line_segment([window[0], window[1]], stroke);
                 }
                 // Draw arrowhead at the last segment
-                draw_arrowhead(painter, points[points.len() - 2], points[points.len() - 1], edge.color, self.zoom);
+                draw_arrowhead(
+                    painter,
+                    points[points.len() - 2],
+                    points[points.len() - 1],
+                    edge.color,
+                    self.zoom,
+                );
             }
         }
 
@@ -163,7 +174,12 @@ impl GraphView {
             // Node background
             painter.rect_filled(rect, 4.0 * self.zoom, Color32::from_rgb(30, 30, 40));
             // Node border
-            painter.rect_stroke(rect, 4.0 * self.zoom, Stroke::new(1.0 * self.zoom, Color32::from_rgb(80, 80, 100)), StrokeKind::Outside);
+            painter.rect_stroke(
+                rect,
+                4.0 * self.zoom,
+                Stroke::new(1.0 * self.zoom, Color32::from_rgb(80, 80, 100)),
+                StrokeKind::Outside,
+            );
 
             // Block header (address)
             let header_pos = Pos2::new(rect.min.x + 4.0 * self.zoom, rect.min.y + 2.0 * self.zoom);
@@ -313,7 +329,7 @@ fn build_layout(func: &Function, ui: &Ui) -> GraphLayout {
     let max_node_width = 450.0_f32;
 
     // Pre-compute formatted instructions and node sizes
-struct NodeInfo {
+    struct NodeInfo {
         instructions: Vec<(u64, String)>,
         width: f32,
         height: f32,
@@ -446,10 +462,7 @@ struct NodeInfo {
             None
         };
 
-        let from_bottom = Pos2::new(
-            from_x + from_info.width / 2.0,
-            from_y + from_info.height,
-        );
+        let from_bottom = Pos2::new(from_x + from_info.width / 2.0, from_y + from_info.height);
 
         let num_successors = block.successors.len();
         for (succ_idx, &succ_addr) in block.successors.iter().enumerate() {
@@ -497,10 +510,7 @@ struct NodeInfo {
             let from_pt = Pos2::new(from_bottom.x + x_offset, from_bottom.y);
             let points = vec![from_pt, to_top];
 
-            edges.push(EdgeLayout {
-                points,
-                color,
-            });
+            edges.push(EdgeLayout { points, color });
         }
     }
 

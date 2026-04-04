@@ -57,8 +57,7 @@ impl StringsView {
                     if len >= self.min_length {
                         let content = String::from_utf8_lossy(&data[s..i]).into_owned();
                         let file_offset = s as u64;
-                        let (virtual_address, section_name) =
-                            Self::map_offset(image, file_offset);
+                        let (virtual_address, section_name) = Self::map_offset(image, file_offset);
                         self.strings.push(ExtractedString {
                             file_offset,
                             virtual_address,
@@ -152,7 +151,11 @@ impl StringsView {
                 "{:<12} {:<12} {:<6} {:<16} {}",
                 "Address", "Offset", "Len", "Section", "String"
             );
-            ui.label(RichText::new(header).font(mono.clone()).color(Color32::GRAY));
+            ui.label(
+                RichText::new(header)
+                    .font(mono.clone())
+                    .color(Color32::GRAY),
+            );
         });
         ui.separator();
 
@@ -173,7 +176,8 @@ impl StringsView {
                         s.section_name,
                         truncate_string(&s.content, 120),
                     );
-                    let response = ui.selectable_label(false, RichText::new(&line).font(mono.clone()));
+                    let response =
+                        ui.selectable_label(false, RichText::new(&line).font(mono.clone()));
                     if response.clicked() {
                         navigate_to = Some(s.virtual_address);
                     }

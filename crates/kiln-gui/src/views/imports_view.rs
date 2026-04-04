@@ -40,7 +40,11 @@ impl ImportsView {
         let mono = FontId::monospace(13.0);
         ui.horizontal(|ui| {
             let header = format!("{:<12} {}", "Address", "Name");
-            ui.label(RichText::new(header).font(mono.clone()).color(Color32::GRAY));
+            ui.label(
+                RichText::new(header)
+                    .font(mono.clone())
+                    .color(Color32::GRAY),
+            );
         });
         ui.separator();
 

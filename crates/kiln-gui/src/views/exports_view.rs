@@ -40,7 +40,11 @@ impl ExportsView {
         let mono = FontId::monospace(13.0);
         ui.horizontal(|ui| {
             let header = format!("{:<12} {:<8} {}", "Address", "Size", "Name");
-            ui.label(RichText::new(header).font(mono.clone()).color(Color32::GRAY));
+            ui.label(
+                RichText::new(header)
+                    .font(mono.clone())
+                    .color(Color32::GRAY),
+            );
         });
         ui.separator();
 
@@ -53,8 +57,7 @@ impl ExportsView {
             .show_rows(ui, row_height, total_rows, |ui, row_range| {
                 for row_idx in row_range {
                     let sym = filtered[row_idx];
-                    let line =
-                        format!("0x{:08X}   {:<6}   {}", sym.address, sym.size, sym.name);
+                    let line = format!("0x{:08X}   {:<6}   {}", sym.address, sym.size, sym.name);
                     let response =
                         ui.selectable_label(false, RichText::new(&line).font(mono.clone()));
                     if response.clicked() {

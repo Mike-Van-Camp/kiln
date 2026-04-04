@@ -125,6 +125,13 @@ pub struct RenameDialog {
     pub input: String,
 }
 
+/// State for the Help / keyboard shortcuts dialog.
+#[derive(Default)]
+pub struct HelpDialog {
+    pub open: bool,
+    pub show_about: bool,
+}
+
 /// An undoable annotation action.
 #[derive(Clone)]
 pub enum UndoAction {
@@ -191,6 +198,12 @@ pub struct KilnApp {
     pub rename_dialog: RenameDialog,
     /// Undo/redo stack for annotation changes (Sprint 7).
     pub undo_stack: UndoStack,
+    /// Error dialog message (Sprint 10).
+    pub error_dialog: Option<String>,
+    /// Help / keyboard shortcuts dialog (Sprint 10).
+    pub help_dialog: HelpDialog,
+    /// Whether dark theme is active (Sprint 10).
+    pub dark_mode: bool,
 }
 
 impl Default for KilnApp {
@@ -217,6 +230,9 @@ impl Default for KilnApp {
             comment_dialog: CommentDialog::default(),
             rename_dialog: RenameDialog::default(),
             undo_stack: UndoStack::default(),
+            error_dialog: None,
+            help_dialog: HelpDialog::default(),
+            dark_mode: true,
         }
     }
 }
@@ -270,8 +286,7 @@ impl KilnApp {
                 self.selected_section = None;
                 self.selected_symbol = None;
                 self.nav_history = NavigationHistory::default();
-                self.project =
-                    kiln_project::Project::new(path.to_string_lossy().into_owned());
+                self.project = kiln_project::Project::new(path.to_string_lossy().into_owned());
                 self.project_path = None;
                 self.undo_stack = UndoStack::default();
                 self.graph_view = GraphView::default();
@@ -280,7 +295,9 @@ impl KilnApp {
                 self.active_tab = ActiveTab::Hex;
             }
             Err(e) => {
+                let msg = format!("Failed to load binary: {}", e);
                 self.status_message = format!("Error loading binary: {}", e);
+                self.error_dialog = Some(msg);
                 log::error!("Failed to load binary: {}", e);
             }
         }
@@ -314,7 +331,11 @@ impl KilnApp {
             ActiveTab::Graph => {
                 // In graph view, navigate to the function containing this address
                 for func in self.analysis.functions.values() {
-                    if func.blocks.iter().any(|b| addr >= b.start_addr && addr < b.end_addr) {
+                    if func
+                        .blocks
+                        .iter()
+                        .any(|b| addr >= b.start_addr && addr < b.end_addr)
+                    {
                         self.graph_view.select_function(func.entry_addr);
                         return;
                     }
@@ -394,6 +415,9 @@ impl KilnApp {
                     {
                         ui.close_menu();
                     }
+                    if ui.checkbox(&mut self.dark_mode, "Dark Theme").clicked() {
+                        ui.close_menu();
+                    }
                 });
                 ui.menu_button("Navigate", |ui| {
                     if ui.button("Go to Address  Ctrl+G").clicked() {
@@ -423,6 +447,18 @@ impl KilnApp {
                     if ui.button("Find...  Ctrl+F").clicked() {
                         self.search_dialog.open = true;
                         self.search_dialog.error = None;
+                        ui.close_menu();
+                    }
+                });
+                ui.menu_button("Help", |ui| {
+                    if ui.button("Keyboard Shortcuts  F1").clicked() {
+                        self.help_dialog.open = true;
+                        self.help_dialog.show_about = false;
+                        ui.close_menu();
+                    }
+                    if ui.button("About Kiln").clicked() {
+                        self.help_dialog.open = true;
+                        self.help_dialog.show_about = true;
                         ui.close_menu();
                     }
                 });
@@ -741,8 +777,10 @@ impl KilnApp {
                     }
                 }
                 Err(e) => {
-                    log::error!("Failed to load project: {}", e);
+                    let msg = format!("Failed to load project: {}", e);
                     self.status_message = format!("Error loading project: {}", e);
+                    self.error_dialog = Some(msg);
+                    log::error!("Failed to load project: {}", e);
                 }
             }
         }
@@ -754,7 +792,10 @@ impl KilnApp {
             Ok(image) => {
                 self.status_message = format!(
                     "{} | {} | {} | {} bytes",
-                    image.filename, image.format, image.architecture, image.data.len(),
+                    image.filename,
+                    image.format,
+                    image.architecture,
+                    image.data.len(),
                 );
 
                 match disassemble_executable_sections(&image) {
@@ -786,7 +827,9 @@ impl KilnApp {
                 self.active_tab = ActiveTab::Hex;
             }
             Err(e) => {
+                let msg = format!("Failed to load binary: {}", e);
                 self.status_message = format!("Error loading binary: {}", e);
+                self.error_dialog = Some(msg);
                 log::error!("Failed to load binary: {}", e);
             }
         }
@@ -1182,7 +1225,15 @@ impl KilnApp {
         let any_dialog_open = self.goto_dialog.open
             || self.search_dialog.open
             || self.comment_dialog.open
-            || self.rename_dialog.open;
+            || self.rename_dialog.open
+            || self.help_dialog.open
+            || self.error_dialog.is_some();
+
+        // F1: Help
+        if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
+            self.help_dialog.open = true;
+            self.help_dialog.show_about = false;
+        }
 
         // Ctrl+G: Go to address
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::G)) {
@@ -1215,9 +1266,9 @@ impl KilnApp {
             self.perform_redo();
         }
         // Ctrl+Z: Undo (only without shift, so Ctrl+Shift+Z goes to redo above)
-        else if ctx.input(|i| {
-            i.modifiers.ctrl && i.key_pressed(egui::Key::Z) && !i.modifiers.shift
-        }) {
+        else if ctx
+            .input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Z) && !i.modifiers.shift)
+        {
             self.perform_undo();
         }
 
@@ -1237,11 +1288,8 @@ impl KilnApp {
             if ctx.input(|i| i.key_pressed(egui::Key::Semicolon)) {
                 if let Some(addr) = self.get_current_selected_address() {
                     self.comment_dialog.address = addr;
-                    self.comment_dialog.input = self
-                        .project
-                        .get_comment(addr)
-                        .unwrap_or("")
-                        .to_string();
+                    self.comment_dialog.input =
+                        self.project.get_comment(addr).unwrap_or("").to_string();
                     self.comment_dialog.open = true;
                 }
             }
@@ -1259,7 +1307,11 @@ impl KilnApp {
 
         // Escape: Close dialogs or navigate back
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            if self.comment_dialog.open {
+            if self.error_dialog.is_some() {
+                self.error_dialog = None;
+            } else if self.help_dialog.open {
+                self.help_dialog.open = false;
+            } else if self.comment_dialog.open {
                 self.comment_dialog.open = false;
             } else if self.rename_dialog.open {
                 self.rename_dialog.open = false;
@@ -1273,22 +1325,113 @@ impl KilnApp {
         }
     }
 
+    /// Render the error dialog (Sprint 10).
+    fn render_error_dialog(&mut self, ctx: &egui::Context) {
+        if self.error_dialog.is_none() {
+            return;
+        }
+
+        let mut open = true;
+        let msg = self.error_dialog.clone().unwrap_or_default();
+        egui::Window::new("⚠ Error")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(&msg);
+                ui.add_space(8.0);
+                if ui.button("OK").clicked() {
+                    self.error_dialog = None;
+                }
+            });
+        if !open {
+            self.error_dialog = None;
+        }
+    }
+
+    /// Render the help / keyboard shortcuts dialog (Sprint 10).
+    fn render_help_dialog(&mut self, ctx: &egui::Context) {
+        if !self.help_dialog.open {
+            return;
+        }
+
+        let mut open = self.help_dialog.open;
+        let title = if self.help_dialog.show_about {
+            "About Kiln"
+        } else {
+            "Keyboard Shortcuts"
+        };
+
+        egui::Window::new(title)
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(400.0)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                if self.help_dialog.show_about {
+                    ui.heading("Kiln — Interactive Disassembler");
+                    ui.add_space(4.0);
+                    ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                    ui.add_space(8.0);
+                    ui.label("An IDA Pro-style interactive disassembler built entirely in Rust.");
+                    ui.add_space(4.0);
+                    ui.label("License: AGPL-3.0");
+                    ui.add_space(4.0);
+                    ui.hyperlink_to("GitHub Repository", "https://github.com/Mike-Van-Camp/kiln");
+                } else {
+                    let shortcuts = [
+                        ("Ctrl+O", "Open Binary"),
+                        ("Ctrl+S", "Save Project"),
+                        ("Ctrl+G", "Go to Address"),
+                        ("Ctrl+F", "Find / Search"),
+                        ("Ctrl+Z", "Undo"),
+                        ("Ctrl+Y", "Redo"),
+                        ("Alt+\u{2190}", "Navigate Back"),
+                        ("Alt+\u{2192}", "Navigate Forward"),
+                        (";", "Add Comment"),
+                        ("N", "Rename Symbol"),
+                        ("Escape", "Back / Close Dialog"),
+                        ("F1", "Help"),
+                    ];
+
+                    egui::Grid::new("shortcut_grid")
+                        .num_columns(2)
+                        .spacing([40.0, 4.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (key, desc) in &shortcuts {
+                                ui.strong(*key);
+                                ui.label(*desc);
+                                ui.end_row();
+                            }
+                        });
+                }
+            });
+        self.help_dialog.open = open;
+    }
+
     /// Get the currently selected instruction address in the disassembly view.
     fn get_current_selected_address(&self) -> Option<u64> {
         if self.active_tab != ActiveTab::Disassembly {
             return None;
         }
-        self.disasm_view.selected_address.or_else(|| {
-            self.disasm_view
-                .cached_addresses
-                .first()
-                .copied()
-        })
+        self.disasm_view
+            .selected_address
+            .or_else(|| self.disasm_view.cached_addresses.first().copied())
     }
 }
 
 impl eframe::App for KilnApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply theme
+        if self.dark_mode {
+            ctx.set_visuals(egui::Visuals::dark());
+        } else {
+            ctx.set_visuals(egui::Visuals::light());
+        }
+
         // Check if disasm view has a pending navigation request
         let pending_nav = self.disasm_view.take_pending_navigation();
         if let Some(addr) = pending_nav {
@@ -1299,16 +1442,14 @@ impl eframe::App for KilnApp {
         // Check if disasm view has a pending comment request
         if let Some(addr) = self.disasm_view.take_pending_comment() {
             self.comment_dialog.address = addr;
-            self.comment_dialog.input =
-                self.project.get_comment(addr).unwrap_or("").to_string();
+            self.comment_dialog.input = self.project.get_comment(addr).unwrap_or("").to_string();
             self.comment_dialog.open = true;
         }
 
         // Check if disasm view has a pending rename request
         if let Some(addr) = self.disasm_view.take_pending_rename() {
             self.rename_dialog.address = addr;
-            self.rename_dialog.input =
-                self.project.get_label(addr).unwrap_or("").to_string();
+            self.rename_dialog.input = self.project.get_label(addr).unwrap_or("").to_string();
             self.rename_dialog.open = true;
         }
 
@@ -1320,6 +1461,8 @@ impl eframe::App for KilnApp {
         self.render_search_dialog(ctx);
         self.render_comment_dialog(ctx);
         self.render_rename_dialog(ctx);
+        self.render_error_dialog(ctx);
+        self.render_help_dialog(ctx);
         self.render_sidebar(ctx);
 
         // Main central panel

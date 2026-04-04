@@ -104,7 +104,7 @@ impl AnalysisDatabase {
             if !visited_functions.insert(entry_addr) {
                 continue;
             }
-            if self.instructions.get(&entry_addr).is_none() {
+            if !self.instructions.contains_key(&entry_addr) {
                 continue;
             }
 
@@ -124,15 +124,13 @@ impl AnalysisDatabase {
                 .map(|s| s.name.clone())
                 .unwrap_or_else(|| format!("sub_{:x}", entry_addr));
 
-            let xrefs_to: Vec<CrossReference> = self
-                .xrefs_to(entry_addr)
-                .to_vec();
+            let xrefs_to: Vec<CrossReference> = self.xrefs_to(entry_addr).to_vec();
             let xrefs_from: Vec<CrossReference> = blocks
                 .iter()
                 .flat_map(|b| {
-                    b.instructions.iter().flat_map(|insn| {
-                        self.xrefs_from(insn.address).to_vec()
-                    })
+                    b.instructions
+                        .iter()
+                        .flat_map(|insn| self.xrefs_from(insn.address).to_vec())
                 })
                 .collect();
 
@@ -169,11 +167,7 @@ impl AnalysisDatabase {
             }
 
             let mut current = addr;
-            loop {
-                let insn = match self.instructions.get(&current) {
-                    Some(i) => i.clone(),
-                    None => break,
-                };
+            while let Some(insn) = self.instructions.get(&current).cloned() {
                 function_addrs.insert(current);
                 let next_addr = current + insn.size as u64;
 
@@ -246,11 +240,7 @@ impl AnalysisDatabase {
             let mut instructions: Vec<Instruction> = Vec::new();
             let mut current = leader;
 
-            loop {
-                let insn = match self.instructions.get(&current) {
-                    Some(i) => i.clone(),
-                    None => break,
-                };
+            while let Some(insn) = self.instructions.get(&current).cloned() {
                 if !function_addrs.contains(&current) {
                     break;
                 }
@@ -365,16 +355,51 @@ pub fn is_branch_mnemonic(m: &str) -> bool {
     let lower = m.to_ascii_lowercase();
     matches!(
         lower.as_str(),
-        "jmp" | "je" | "jne" | "jz" | "jnz"
-            | "jg" | "jge" | "jl" | "jle"
-            | "ja" | "jae" | "jb" | "jbe"
-            | "jo" | "jno" | "js" | "jns"
-            | "jp" | "jnp" | "jpe" | "jpo"
-            | "jcxz" | "jecxz" | "jrcxz"
-            | "b" | "bne" | "beq" | "blt" | "bgt" | "bge" | "ble"
-            | "bx" | "bhi" | "bls" | "bcc" | "bcs"
-            | "bpl" | "bmi" | "bvs" | "bvc"
-            | "loop" | "loope" | "loopne" | "loopz" | "loopnz"
+        "jmp"
+            | "je"
+            | "jne"
+            | "jz"
+            | "jnz"
+            | "jg"
+            | "jge"
+            | "jl"
+            | "jle"
+            | "ja"
+            | "jae"
+            | "jb"
+            | "jbe"
+            | "jo"
+            | "jno"
+            | "js"
+            | "jns"
+            | "jp"
+            | "jnp"
+            | "jpe"
+            | "jpo"
+            | "jcxz"
+            | "jecxz"
+            | "jrcxz"
+            | "b"
+            | "bne"
+            | "beq"
+            | "blt"
+            | "bgt"
+            | "bge"
+            | "ble"
+            | "bx"
+            | "bhi"
+            | "bls"
+            | "bcc"
+            | "bcs"
+            | "bpl"
+            | "bmi"
+            | "bvs"
+            | "bvc"
+            | "loop"
+            | "loope"
+            | "loopne"
+            | "loopz"
+            | "loopnz"
     )
 }
 
@@ -387,10 +412,7 @@ pub fn is_call_mnemonic(m: &str) -> bool {
 /// Check if a mnemonic is a return instruction.
 pub fn is_return_mnemonic(m: &str) -> bool {
     let lower = m.to_ascii_lowercase();
-    matches!(
-        lower.as_str(),
-        "ret" | "retn" | "retf" | "iret" | "sysret"
-    )
+    matches!(lower.as_str(), "ret" | "retn" | "retf" | "iret" | "sysret")
 }
 
 /// Check if a branch mnemonic is conditional (i.e., has a fall-through path).

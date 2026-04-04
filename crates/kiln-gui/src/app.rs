@@ -23,6 +23,83 @@ pub struct GotoDialog {
     pub error: Option<String>,
 }
 
+/// State for the Search dialog (Sprint 6).
+#[derive(Default)]
+pub struct SearchDialog {
+    pub open: bool,
+    pub query: String,
+    pub search_mode: SearchMode,
+    pub results: Vec<SearchResult>,
+    pub error: Option<String>,
+}
+
+/// Search mode selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchMode {
+    #[default]
+    Text,
+    HexBytes,
+}
+
+/// A single search result.
+#[derive(Clone)]
+pub struct SearchResult {
+    pub address: u64,
+    pub context: String,
+}
+
+/// Navigation history for back/forward (Sprint 6).
+#[derive(Default)]
+pub struct NavigationHistory {
+    stack: Vec<u64>,
+    position: usize,
+}
+
+impl NavigationHistory {
+    /// Push a new address onto the history, truncating any forward history.
+    pub fn push(&mut self, addr: u64) {
+        // Don't push duplicate of current position
+        if self.position > 0
+            && self.position <= self.stack.len()
+            && self.stack[self.position - 1] == addr
+        {
+            return;
+        }
+        // Truncate forward history
+        self.stack.truncate(self.position);
+        self.stack.push(addr);
+        self.position = self.stack.len();
+    }
+
+    /// Go back in history. Returns the address to navigate to.
+    pub fn go_back(&mut self) -> Option<u64> {
+        if self.position > 1 {
+            self.position -= 1;
+            Some(self.stack[self.position - 1])
+        } else {
+            None
+        }
+    }
+
+    /// Go forward in history. Returns the address to navigate to.
+    pub fn go_forward(&mut self) -> Option<u64> {
+        if self.position < self.stack.len() {
+            self.position += 1;
+            Some(self.stack[self.position - 1])
+        } else {
+            None
+        }
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        self.position > 1
+    }
+
+    pub fn can_go_forward(&self) -> bool {
+        self.position < self.stack.len()
+    }
+}
+
 /// Main application state.
 pub struct KilnApp {
     /// The loaded binary image (None if no file is open).
@@ -43,6 +120,10 @@ pub struct KilnApp {
     pub selected_symbol: Option<usize>,
     /// Go-to-address dialog state.
     pub goto_dialog: GotoDialog,
+    /// Search dialog state (Sprint 6).
+    pub search_dialog: SearchDialog,
+    /// Navigation history (Sprint 6).
+    pub nav_history: NavigationHistory,
     /// Whether to show the section sidebar (Sprint 3) or function sidebar (Sprint 4).
     pub show_sidebar: bool,
 }
@@ -59,6 +140,8 @@ impl Default for KilnApp {
             selected_section: None,
             selected_symbol: None,
             goto_dialog: GotoDialog::default(),
+            search_dialog: SearchDialog::default(),
+            nav_history: NavigationHistory::default(),
             show_sidebar: true,
         }
     }
@@ -89,6 +172,12 @@ impl KilnApp {
                         let first_addr = instructions.first().map(|i| i.address);
                         self.analysis.index_instructions(instructions);
 
+                        // Run control flow analysis (Sprint 5)
+                        self.analysis.run_analysis(&image);
+
+                        // Rebuild disasm view cache
+                        self.disasm_view.invalidate_cache();
+
                         // Set initial disassembly view position
                         if let Some(addr) = first_addr {
                             self.disasm_view.scroll_to_address = Some(addr);
@@ -106,6 +195,7 @@ impl KilnApp {
 
                 self.selected_section = None;
                 self.selected_symbol = None;
+                self.nav_history = NavigationHistory::default();
                 self.image = Some(image);
                 self.active_tab = ActiveTab::Hex;
             }
@@ -116,12 +206,17 @@ impl KilnApp {
         }
     }
 
-    /// Navigate to a specific address in the current view.
+    /// Navigate to a specific address in the current view, recording history.
     pub fn navigate_to_address(&mut self, addr: u64) {
+        self.nav_history.push(addr);
+        self.navigate_to_address_no_history(addr);
+    }
+
+    /// Navigate without recording in history (used by back/forward).
+    fn navigate_to_address_no_history(&mut self, addr: u64) {
         match self.active_tab {
             ActiveTab::Hex => {
                 if let Some(image) = &self.image {
-                    // Find which section contains this address and compute file offset
                     for section in &image.sections {
                         if addr >= section.address && addr < section.address + section.size {
                             let offset_in_section = addr - section.address;
@@ -130,7 +225,6 @@ impl KilnApp {
                             return;
                         }
                     }
-                    // Fallback: treat address as file offset
                     self.hex_view.offset = addr as usize;
                 }
             }
@@ -140,12 +234,26 @@ impl KilnApp {
         }
     }
 
+    /// Navigate back in history (Sprint 6).
+    fn navigate_back(&mut self) {
+        if let Some(addr) = self.nav_history.go_back() {
+            self.navigate_to_address_no_history(addr);
+        }
+    }
+
+    /// Navigate forward in history (Sprint 6).
+    fn navigate_forward(&mut self) {
+        if let Some(addr) = self.nav_history.go_forward() {
+            self.navigate_to_address_no_history(addr);
+        }
+    }
+
     /// Render the menu bar.
     fn render_menu_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("Open...").clicked() {
+                    if ui.button("Open...  Ctrl+O").clicked() {
                         self.open_file_dialog();
                         ui.close_menu();
                     }
@@ -163,10 +271,33 @@ impl KilnApp {
                     }
                 });
                 ui.menu_button("Navigate", |ui| {
-                    if ui.button("Go to Address (Ctrl+G)").clicked() {
+                    if ui.button("Go to Address  Ctrl+G").clicked() {
                         self.goto_dialog.open = true;
                         self.goto_dialog.input.clear();
                         self.goto_dialog.error = None;
+                        ui.close_menu();
+                    }
+                    let back_btn = ui.add_enabled(
+                        self.nav_history.can_go_back(),
+                        egui::Button::new("Back  Alt+←"),
+                    );
+                    if back_btn.clicked() {
+                        self.navigate_back();
+                        ui.close_menu();
+                    }
+                    let fwd_btn = ui.add_enabled(
+                        self.nav_history.can_go_forward(),
+                        egui::Button::new("Forward  Alt+→"),
+                    );
+                    if fwd_btn.clicked() {
+                        self.navigate_forward();
+                        ui.close_menu();
+                    }
+                });
+                ui.menu_button("Search", |ui| {
+                    if ui.button("Find...  Ctrl+F").clicked() {
+                        self.search_dialog.open = true;
+                        self.search_dialog.error = None;
                         ui.close_menu();
                     }
                 });
@@ -179,6 +310,13 @@ impl KilnApp {
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&self.status_message);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let func_count = self.analysis.functions.len();
+                    let xref_count = self.analysis.xrefs.len();
+                    if func_count > 0 {
+                        ui.label(format!("{} functions | {} xrefs", func_count, xref_count));
+                    }
+                });
             });
         });
     }
@@ -258,12 +396,34 @@ impl KilnApp {
         }
     }
 
-    /// Render the function/symbol list sidebar (Sprint 4).
+    /// Render the function list sidebar showing detected functions (Sprint 5).
     fn render_function_sidebar(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Functions");
+        let func_count = self.analysis.functions.len();
+        ui.heading(format!("Functions ({})", func_count));
         ui.separator();
 
-        if let Some(image) = &self.image {
+        if func_count > 0 {
+            // Show detected functions from analysis (sorted by address via BTreeMap)
+            let funcs: Vec<(String, u64)> = self
+                .analysis
+                .functions
+                .values()
+                .map(|f| (f.name.clone(), f.entry_addr))
+                .collect();
+
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (i, (name, addr)) in funcs.iter().enumerate() {
+                    let label = format!("0x{:08x}  {}", addr, name);
+                    let selected = self.selected_symbol == Some(i);
+                    if ui.selectable_label(selected, &label).clicked() {
+                        self.selected_symbol = Some(i);
+                        self.disasm_view.scroll_to_address = Some(*addr);
+                        self.nav_history.push(*addr);
+                    }
+                }
+            });
+        } else if let Some(image) = &self.image {
+            // Fallback to symbol table if no analysis yet
             let funcs: Vec<(String, u64)> = image
                 .function_symbols()
                 .iter()
@@ -277,6 +437,7 @@ impl KilnApp {
                     if ui.selectable_label(selected, &label).clicked() {
                         self.selected_symbol = Some(i);
                         self.disasm_view.scroll_to_address = Some(*addr);
+                        self.nav_history.push(*addr);
                     }
                 }
             });
@@ -342,9 +503,164 @@ impl KilnApp {
         self.goto_dialog.open = open;
     }
 
+    /// Render and handle the search dialog (Sprint 6).
+    fn render_search_dialog(&mut self, ctx: &egui::Context) {
+        if !self.search_dialog.open {
+            return;
+        }
+
+        let mut open = self.search_dialog.open;
+        egui::Window::new("Search")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(500.0)
+            .default_height(400.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.radio_value(
+                        &mut self.search_dialog.search_mode,
+                        SearchMode::Text,
+                        "Text",
+                    );
+                    ui.radio_value(
+                        &mut self.search_dialog.search_mode,
+                        SearchMode::HexBytes,
+                        "Hex Bytes",
+                    );
+                });
+
+                let hint = match self.search_dialog.search_mode {
+                    SearchMode::Text => "Search mnemonics/operands...",
+                    SearchMode::HexBytes => "Hex bytes (e.g. 90 C3 or 90C3)...",
+                };
+                ui.horizontal(|ui| {
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut self.search_dialog.query).hint_text(hint),
+                    );
+                    let search_clicked = ui.button("Search").clicked();
+                    let enter_pressed =
+                        response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+                    if search_clicked || enter_pressed {
+                        self.perform_search();
+                    }
+                });
+
+                if let Some(err) = &self.search_dialog.error {
+                    ui.colored_label(egui::Color32::RED, err);
+                }
+
+                ui.separator();
+                ui.label(format!("{} results", self.search_dialog.results.len()));
+
+                // Results list
+                let results = self.search_dialog.results.clone();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for result in &results {
+                        let label = format!("0x{:08X}  {}", result.address, result.context);
+                        if ui
+                            .selectable_label(false, &label)
+                            .on_hover_text("Click to navigate")
+                            .clicked()
+                        {
+                            self.active_tab = ActiveTab::Disassembly;
+                            self.navigate_to_address(result.address);
+                        }
+                    }
+                });
+            });
+        self.search_dialog.open = open;
+    }
+
+    /// Perform search based on current search dialog state.
+    fn perform_search(&mut self) {
+        let query = self.search_dialog.query.trim().to_string();
+        if query.is_empty() {
+            self.search_dialog.error = Some("Empty search query".to_string());
+            return;
+        }
+
+        self.search_dialog.error = None;
+        self.search_dialog.results.clear();
+
+        match self.search_dialog.search_mode {
+            SearchMode::Text => {
+                let query_lower = query.to_lowercase();
+                for insn in self.analysis.instructions.values() {
+                    if insn.mnemonic.to_lowercase().contains(&query_lower)
+                        || insn.operands.to_lowercase().contains(&query_lower)
+                    {
+                        self.search_dialog.results.push(SearchResult {
+                            address: insn.address,
+                            context: format!("{} {}", insn.mnemonic, insn.operands),
+                        });
+                        if self.search_dialog.results.len() >= 1000 {
+                            break;
+                        }
+                    }
+                }
+            }
+            SearchMode::HexBytes => {
+                // Parse hex bytes from query (supports "90 C3" or "90C3")
+                let hex_str: String = query.chars().filter(|c| !c.is_whitespace()).collect();
+                if !hex_str.len().is_multiple_of(2) {
+                    self.search_dialog.error =
+                        Some("Hex string must have even number of digits".to_string());
+                    return;
+                }
+                let pattern: Result<Vec<u8>, _> = (0..hex_str.len())
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16))
+                    .collect();
+                match pattern {
+                    Ok(pattern) => {
+                        if let Some(image) = &self.image {
+                            // Search in binary data
+                            let data = &image.data;
+                            let pat_len = pattern.len();
+                            if pat_len > 0 && pat_len <= data.len() {
+                                for i in 0..=data.len() - pat_len {
+                                    if data[i..i + pat_len] == pattern[..] {
+                                        // Try to find the virtual address
+                                        let va = self.file_offset_to_va(i as u64);
+                                        self.search_dialog.results.push(SearchResult {
+                                            address: va,
+                                            context: format!("offset 0x{:X}", i),
+                                        });
+                                        if self.search_dialog.results.len() >= 1000 {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        self.search_dialog.error = Some("Invalid hex bytes".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Convert a file offset to a virtual address using section mapping.
+    fn file_offset_to_va(&self, offset: u64) -> u64 {
+        if let Some(image) = &self.image {
+            for section in &image.sections {
+                let sec_start = section.file_offset;
+                let sec_end = sec_start + section.size;
+                if offset >= sec_start && offset < sec_end {
+                    return section.address + (offset - sec_start);
+                }
+            }
+        }
+        offset
+    }
+
     /// Handle keyboard shortcuts.
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
-        // Ctrl+G: Go to address
+        // Ctrl+G or G (without text focus): Go to address
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::G)) {
             self.goto_dialog.open = true;
             self.goto_dialog.input.clear();
@@ -355,16 +671,51 @@ impl KilnApp {
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::O)) {
             self.open_file_dialog();
         }
+
+        // Ctrl+F: Search
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::F)) {
+            self.search_dialog.open = true;
+            self.search_dialog.error = None;
+        }
+
+        // Alt+Left: Navigate back
+        if ctx.input(|i| i.modifiers.alt && i.key_pressed(egui::Key::ArrowLeft)) {
+            self.navigate_back();
+        }
+
+        // Alt+Right: Navigate forward
+        if ctx.input(|i| i.modifiers.alt && i.key_pressed(egui::Key::ArrowRight)) {
+            self.navigate_forward();
+        }
+
+        // Escape: Navigate back (or close dialogs)
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if self.goto_dialog.open {
+                self.goto_dialog.open = false;
+            } else if self.search_dialog.open {
+                self.search_dialog.open = false;
+            } else {
+                self.navigate_back();
+            }
+        }
     }
 }
 
 impl eframe::App for KilnApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check if disasm view has a pending navigation request
+        let pending_nav = self.disasm_view.take_pending_navigation();
+        if let Some(addr) = pending_nav {
+            self.active_tab = ActiveTab::Disassembly;
+            self.navigate_to_address(addr);
+        }
+
         self.handle_shortcuts(ctx);
         self.render_menu_bar(ctx);
         self.render_status_bar(ctx);
         self.render_tab_bar(ctx);
         self.render_goto_dialog(ctx);
+        self.render_search_dialog(ctx);
         self.render_sidebar(ctx);
 
         // Main central panel

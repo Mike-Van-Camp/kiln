@@ -1,0 +1,15 @@
+[package]
+name = "kiln-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core library for binary loading, disassembly, and analysis"
+
+[dependencies]
+goblin = "0.9"
+capstone = "0.12"
+log = "0.4"
+thiserror = "2"
+
+[dev-dependencies]
+env_logger = "0.11"

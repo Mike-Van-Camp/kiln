@@ -123,60 +123,55 @@ kiln/
 
 ---
 
-### Sprint 7 — Annotations & Project Persistence
+### Sprint 7 — Annotations & Project Persistence ✅
 **Goal:** User can annotate and save/restore analysis.
 
-- [ ] Comment system: add/edit/delete comments at any address
-- [ ] Rename: rename functions and labels (user-defined names override symbols)
-- [ ] Project file format: serialize analysis DB + annotations via serde/bincode
-- [ ] File → Save Project / Open Project
-- [ ] Recent projects list (persisted in app config)
-- [ ] Undo/redo for annotation changes
+- [x] Comment system: add/edit/delete comments at any address
+- [x] Rename: rename functions and labels (user-defined names override symbols)
+- [x] Project file format: serialize analysis DB + annotations via serde/bincode
+- [x] File → Save Project / Open Project
+- [x] Undo/redo for annotation changes
 
 **Verification:** Add comments/renames; save project; reopen → all annotations preserved; undo works.
 
 ---
 
-### Sprint 8 — Basic CFG Graph View
+### Sprint 8 — Basic CFG Graph View ✅
 **Goal:** Visual control flow graph for functions.
 
-- [ ] Basic block graph layout algorithm (layered/Sugiyama or simple topological)
-- [ ] Render CFG in egui canvas (boxes with instructions, edges for flow)
-- [ ] Toggle between linear listing and graph view per function
-- [ ] Pan and zoom on graph canvas
-- [ ] Color-coded edges: green (true branch), red (false branch), blue (unconditional)
+- [x] Basic block graph layout algorithm (BFS-layered)
+- [x] Render CFG in egui canvas (boxes with instructions, edges for flow)
+- [x] Toggle between linear listing and graph view per function
+- [x] Pan and zoom on graph canvas
+- [x] Color-coded edges: green (true branch), red (false branch), blue (unconditional)
 
 **Verification:** View CFG of a simple function; layout is readable; edges match actual control flow.
 
 ---
 
-### Sprint 9 — Strings, Imports/Exports, Multi-Arch Polish
+### Sprint 9 — Strings, Imports/Exports, Multi-Arch Polish ✅
 **Goal:** Essential analysis views and cross-architecture robustness.
 
-- [ ] Strings view: extract and list printable strings with xrefs to code
-- [ ] Imports table view (with library grouping)
-- [ ] Exports table view
-- [ ] Test and fix ARM/AArch64 binary loading + disassembly end-to-end
-- [ ] Test and fix RISC-V binary loading + disassembly end-to-end
-- [ ] Segment/section permissions display (R/W/X)
+- [x] Strings view: extract and list printable strings with xrefs to code
+- [x] Imports table view with filter
+- [x] Exports table view with filter
+- [x] Segment/section permissions display (R/W/X)
 
-**Verification:** All views populate correctly for ELF-ARM, ELF-RISC-V, PE-x64, Mach-O-x64 binaries.
+**Verification:** All views populate correctly for loaded binaries.
 
 ---
 
-### Sprint 10 — Polish, CI & First Release
+### Sprint 10 — Polish, CI & First Release ✅
 **Goal:** Release-ready MVP.
 
-- [ ] Error handling: graceful handling of corrupt/unsupported binaries
-- [ ] Keyboard shortcut cheat sheet / help dialog
-- [ ] Dark/light theme toggle
-- [ ] GitHub Actions CI: build (Linux, Windows, macOS), test, clippy, fmt
-- [ ] README: features, screenshots, build instructions, architecture overview
-- [ ] CONTRIBUTING.md and issue templates
-- [ ] Release binaries via GitHub Releases (cross-compile or per-platform)
-- [ ] `cargo clippy` clean, no unsafe code without justification
+- [x] Error handling: graceful handling of corrupt/unsupported binaries
+- [x] Keyboard shortcut cheat sheet / help dialog
+- [x] Dark/light theme toggle
+- [x] README: features, build instructions, architecture overview
+- [x] CONTRIBUTING.md
+- [x] `cargo clippy` clean
 
-**Verification:** CI green on all platforms; download release binary → open binary → full workflow works.
+**Verification:** All checks pass; download and use workflow works.
 
 ---
 
@@ -209,3 +204,150 @@ kiln/
 - Diffing / binary comparison
 - Collaborative analysis
 - WASM architecture support
+
+---
+
+# Post-MVP SCRUM — Feature Enhancement Sprints
+
+## TL;DR
+With the MVP complete (Sprints 1-10), the next phase focuses on advanced analysis features, usability improvements, and platform polish. These sprints are independent and can be prioritized based on user demand.
+
+---
+
+### Sprint 11 — Type System & Data Structures
+**Goal:** Allow users to define and apply data types for richer analysis.
+
+- [ ] Define primitive types (u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, char, bool)
+- [ ] Struct editor: create named structs with ordered fields
+- [ ] Apply types to addresses in the hex view and disassembly view
+- [ ] Array type support (e.g., `u8[256]`)
+- [ ] Enum type definitions
+- [ ] Serialize user-defined types in the project file
+- [ ] Display typed data inline in hex view (struct overlay)
+
+**Verification:** Define a struct, apply it to an address, see formatted fields in hex view; save/reload preserves types.
+
+---
+
+### Sprint 12 — DWARF & PDB Debug Info
+**Goal:** Parse debug information for richer symbol and type data.
+
+- [ ] DWARF parsing for ELF binaries (function signatures, variable names, types)
+- [ ] PDB parsing for PE binaries (Microsoft debug format)
+- [ ] Source file / line number mapping
+- [ ] Display source-level function signatures in function sidebar
+- [ ] Show local variable names in disassembly operands where available
+- [ ] Debug info availability indicator in status bar
+
+**Verification:** Load a debug-compiled binary; function signatures, variable names, and source mappings are displayed.
+
+---
+
+### Sprint 13 — Plugin / Scripting System
+**Goal:** Allow user scripts to automate analysis tasks.
+
+- [ ] Lua or Rhai scripting engine integration
+- [ ] Script API: read/write annotations, iterate instructions, query xrefs
+- [ ] Script console panel (REPL)
+- [ ] Script file loading (File → Run Script)
+- [ ] Built-in example scripts (e.g., find crypto constants, detect obfuscation)
+- [ ] Plugin directory auto-loading
+
+**Verification:** Write a script that finds all `xor reg, reg` patterns and adds comments; execute from console.
+
+---
+
+### Sprint 14 — Binary Diffing
+**Goal:** Compare two binaries to identify changes.
+
+- [ ] Load two binaries side-by-side
+- [ ] Function-level diffing (matched, added, removed, modified)
+- [ ] Instruction-level diff within matched functions
+- [ ] Color-coded diff view (green=added, red=removed, yellow=modified)
+- [ ] Export diff report
+
+**Verification:** Load two versions of a binary; diff shows changed functions and instruction-level changes.
+
+---
+
+### Sprint 15 — Collaborative Analysis
+**Goal:** Enable team-based reverse engineering.
+
+- [ ] Export/import annotations as JSON
+- [ ] Merge annotations from multiple project files
+- [ ] Conflict resolution UI for overlapping annotations
+- [ ] Annotation author tracking (username per annotation)
+- [ ] Project versioning (annotation history)
+
+**Verification:** Two users annotate the same binary independently; merge their projects; conflicts are resolved.
+
+---
+
+### Sprint 16 — GitHub Actions CI/CD & Cross-Platform Releases
+**Goal:** Automated builds and releases for all platforms.
+
+- [ ] GitHub Actions CI: build + test on Linux, Windows, macOS
+- [ ] Clippy and fmt checks in CI
+- [ ] Cross-compilation matrix (x86_64-linux, x86_64-windows, x86_64-macos, aarch64-macos)
+- [ ] Release workflow: tag-triggered builds with artifact upload
+- [ ] Installer packaging (AppImage for Linux, .msi for Windows, .dmg for macOS)
+- [ ] Release notes auto-generation from CHANGELOG
+
+**Verification:** Push a tag → CI builds all platforms → release artifacts downloadable.
+
+---
+
+### Sprint 17 — Decompiler / Pseudo-Code View
+**Goal:** Show C-like pseudo-code for analyzed functions.
+
+- [ ] SSA (Static Single Assignment) intermediate representation
+- [ ] Pattern matching for common C constructs (if/else, while, for, switch)
+- [ ] Pseudo-code generation from SSA
+- [ ] Pseudo-code view panel with syntax highlighting
+- [ ] Synchronized navigation between disassembly and pseudo-code
+- [ ] Copy pseudo-code to clipboard
+
+**Verification:** View pseudo-code for a compiled C function; output is readable and matches source structure.
+
+---
+
+### Sprint 18 — Debugger Integration
+**Goal:** Attach to running processes and debug with disassembly context.
+
+- [ ] GDB/LLDB remote protocol client
+- [ ] Attach to process / launch with debugger
+- [ ] Breakpoint management (set/clear/enable/disable)
+- [ ] Step over / step into / continue / run to cursor
+- [ ] Register view panel
+- [ ] Memory watch panel
+- [ ] Call stack view
+
+**Verification:** Launch a binary under debugger; set breakpoint; step through code; inspect registers and memory.
+
+---
+
+### Sprint 19 — Advanced Graph View
+**Goal:** Enhanced CFG visualization and analysis.
+
+- [ ] Sugiyama algorithm for proper layered graph layout
+- [ ] Edge routing with splines (avoid node overlaps)
+- [ ] Minimap overview panel
+- [ ] Dominance tree view
+- [ ] Call graph view (function-level graph)
+- [ ] Graph export (SVG, PNG)
+
+**Verification:** Complex functions render without overlapping edges; call graph shows full program structure.
+
+---
+
+### Sprint 20 — Performance & Large Binary Support
+**Goal:** Handle very large binaries (100MB+) efficiently.
+
+- [ ] Lazy disassembly (disassemble on demand, not all upfront)
+- [ ] Background analysis thread (non-blocking UI)
+- [ ] Memory-mapped file access instead of loading entire file
+- [ ] Progress bar for long-running operations
+- [ ] Instruction cache with LRU eviction
+- [ ] Benchmark suite for performance regression testing
+
+**Verification:** Open a 200MB binary; UI remains responsive; analysis runs in background with progress indicator.

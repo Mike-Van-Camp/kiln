@@ -4,6 +4,7 @@ pub mod debugger;
 pub mod decompiler;
 pub mod diff;
 pub mod disasm;
+pub mod graph;
 pub mod loader;
 pub mod model;
 

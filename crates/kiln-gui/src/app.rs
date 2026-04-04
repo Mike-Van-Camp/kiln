@@ -4,6 +4,7 @@ use eframe::egui;
 use kiln_core::analysis::AnalysisDatabase;
 use kiln_core::disasm::disassemble_executable_sections;
 use kiln_core::model::BinaryImage;
+use std::path::PathBuf;
 
 use crate::views::disasm_view::DisasmView;
 use crate::views::hex_view::HexView;
@@ -100,6 +101,44 @@ impl NavigationHistory {
     }
 }
 
+/// State for the comment dialog.
+#[derive(Default)]
+pub struct CommentDialog {
+    pub open: bool,
+    pub address: u64,
+    pub input: String,
+}
+
+/// State for the rename dialog.
+#[derive(Default)]
+pub struct RenameDialog {
+    pub open: bool,
+    pub address: u64,
+    pub input: String,
+}
+
+/// An undoable annotation action.
+#[derive(Clone)]
+pub enum UndoAction {
+    SetComment {
+        addr: u64,
+        old: Option<String>,
+        new: Option<String>,
+    },
+    SetLabel {
+        addr: u64,
+        old: Option<String>,
+        new: Option<String>,
+    },
+}
+
+/// Undo/redo stack for annotation changes.
+#[derive(Default)]
+pub struct UndoStack {
+    undo: Vec<UndoAction>,
+    redo: Vec<UndoAction>,
+}
+
 /// Main application state.
 pub struct KilnApp {
     /// The loaded binary image (None if no file is open).
@@ -126,6 +165,16 @@ pub struct KilnApp {
     pub nav_history: NavigationHistory,
     /// Whether to show the section sidebar (Sprint 3) or function sidebar (Sprint 4).
     pub show_sidebar: bool,
+    /// Project containing annotations and metadata (Sprint 7).
+    pub project: kiln_project::Project,
+    /// Path where the project was last saved.
+    pub project_path: Option<PathBuf>,
+    /// Comment dialog state (Sprint 7).
+    pub comment_dialog: CommentDialog,
+    /// Rename dialog state (Sprint 7).
+    pub rename_dialog: RenameDialog,
+    /// Undo/redo stack for annotation changes (Sprint 7).
+    pub undo_stack: UndoStack,
 }
 
 impl Default for KilnApp {
@@ -143,6 +192,11 @@ impl Default for KilnApp {
             search_dialog: SearchDialog::default(),
             nav_history: NavigationHistory::default(),
             show_sidebar: true,
+            project: kiln_project::Project::new(String::new()),
+            project_path: None,
+            comment_dialog: CommentDialog::default(),
+            rename_dialog: RenameDialog::default(),
+            undo_stack: UndoStack::default(),
         }
     }
 }
@@ -196,6 +250,10 @@ impl KilnApp {
                 self.selected_section = None;
                 self.selected_symbol = None;
                 self.nav_history = NavigationHistory::default();
+                self.project =
+                    kiln_project::Project::new(path.to_string_lossy().into_owned());
+                self.project_path = None;
+                self.undo_stack = UndoStack::default();
                 self.image = Some(image);
                 self.active_tab = ActiveTab::Hex;
             }
@@ -258,8 +316,39 @@ impl KilnApp {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.button("Save Project  Ctrl+S").clicked() {
+                        self.save_project();
+                        ui.close_menu();
+                    }
+                    if ui.button("Save Project As...").clicked() {
+                        self.save_project_as();
+                        ui.close_menu();
+                    }
+                    if ui.button("Open Project...").clicked() {
+                        self.open_project_dialog();
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button("Quit").clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+                ui.menu_button("Edit", |ui| {
+                    let can_undo = !self.undo_stack.undo.is_empty();
+                    let can_redo = !self.undo_stack.redo.is_empty();
+                    if ui
+                        .add_enabled(can_undo, egui::Button::new("Undo  Ctrl+Z"))
+                        .clicked()
+                    {
+                        self.perform_undo();
+                        ui.close_menu();
+                    }
+                    if ui
+                        .add_enabled(can_redo, egui::Button::new("Redo  Ctrl+Y"))
+                        .clicked()
+                    {
+                        self.perform_redo();
+                        ui.close_menu();
                     }
                 });
                 ui.menu_button("View", |ui| {
@@ -310,11 +399,21 @@ impl KilnApp {
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&self.status_message);
+                if let Some(path) = &self.project_path {
+                    ui.separator();
+                    if let Some(name) = path.file_name() {
+                        ui.label(format!("Project: {}", name.to_string_lossy()));
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let func_count = self.analysis.functions.len();
                     let xref_count = self.analysis.xrefs.len();
+                    let annotation_count = self.project.annotations.len();
                     if func_count > 0 {
-                        ui.label(format!("{} functions | {} xrefs", func_count, xref_count));
+                        ui.label(format!(
+                            "{} functions | {} xrefs | {} annotations",
+                            func_count, xref_count, annotation_count
+                        ));
                     }
                 });
             });
@@ -451,6 +550,301 @@ impl KilnApp {
         if let Some(path) = rfd::FileDialog::new().set_title("Open Binary").pick_file() {
             self.open_binary(&path);
         }
+    }
+
+    /// Save the project to the current project_path, or prompt for one.
+    fn save_project(&mut self) {
+        if let Some(path) = self.project_path.clone() {
+            match self.project.save(&path) {
+                Ok(()) => {
+                    log::info!("Project saved to {}", path.display());
+                }
+                Err(e) => {
+                    log::error!("Failed to save project: {}", e);
+                }
+            }
+        } else {
+            self.save_project_as();
+        }
+    }
+
+    /// Prompt for a path and save the project there.
+    fn save_project_as(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Save Project")
+            .add_filter("Kiln Project", &["kproj"])
+            .save_file()
+        {
+            let path = if path.extension().is_none() {
+                path.with_extension("kproj")
+            } else {
+                path
+            };
+            match self.project.save(&path) {
+                Ok(()) => {
+                    log::info!("Project saved to {}", path.display());
+                    self.project_path = Some(path);
+                }
+                Err(e) => {
+                    log::error!("Failed to save project: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Show open dialog for .kproj files, load project, then open the binary it references.
+    fn open_project_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Open Project")
+            .add_filter("Kiln Project", &["kproj"])
+            .pick_file()
+        {
+            match kiln_project::Project::load(&path) {
+                Ok(project) => {
+                    let binary_path = PathBuf::from(&project.metadata.binary_path);
+                    self.project = project;
+                    self.project_path = Some(path);
+                    self.undo_stack = UndoStack::default();
+                    if binary_path.exists() {
+                        self.open_binary_with_existing_project(&binary_path);
+                    } else {
+                        log::warn!(
+                            "Binary not found at {}, open it manually",
+                            binary_path.display()
+                        );
+                        self.status_message = format!(
+                            "Project loaded, but binary not found: {}",
+                            binary_path.display()
+                        );
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to load project: {}", e);
+                    self.status_message = format!("Error loading project: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Open a binary without resetting the project (used when loading from .kproj).
+    fn open_binary_with_existing_project(&mut self, path: &std::path::Path) {
+        match kiln_core::load_binary(path) {
+            Ok(image) => {
+                self.status_message = format!(
+                    "{} | {} | {} | {} bytes",
+                    image.filename, image.format, image.architecture, image.data.len(),
+                );
+
+                match disassemble_executable_sections(&image) {
+                    Ok(instructions) => {
+                        self.analysis = AnalysisDatabase::new();
+                        let first_addr = instructions.first().map(|i| i.address);
+                        self.analysis.index_instructions(instructions);
+                        self.analysis.run_analysis(&image);
+                        self.disasm_view.invalidate_cache();
+                        if let Some(addr) = first_addr {
+                            self.disasm_view.scroll_to_address = Some(addr);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Disassembly failed: {}", e);
+                    }
+                }
+
+                if let Some(section) = image.sections.first() {
+                    self.hex_view.offset = section.file_offset as usize;
+                }
+
+                self.selected_section = None;
+                self.selected_symbol = None;
+                self.nav_history = NavigationHistory::default();
+                self.image = Some(image);
+                self.active_tab = ActiveTab::Hex;
+            }
+            Err(e) => {
+                self.status_message = format!("Error loading binary: {}", e);
+                log::error!("Failed to load binary: {}", e);
+            }
+        }
+    }
+
+    /// Set a comment with undo tracking.
+    fn set_comment_with_undo(&mut self, addr: u64, new_comment: Option<String>) {
+        let old = self.project.get_comment(addr).map(|s| s.to_string());
+        if old == new_comment {
+            return;
+        }
+        self.undo_stack.redo.clear();
+        self.undo_stack.undo.push(UndoAction::SetComment {
+            addr,
+            old,
+            new: new_comment.clone(),
+        });
+        match new_comment {
+            Some(c) => self.project.set_comment(addr, c),
+            None => self.project.remove_comment(addr),
+        }
+    }
+
+    /// Set a label with undo tracking.
+    fn set_label_with_undo(&mut self, addr: u64, new_label: Option<String>) {
+        let old = self.project.get_label(addr).map(|s| s.to_string());
+        if old == new_label {
+            return;
+        }
+        self.undo_stack.redo.clear();
+        self.undo_stack.undo.push(UndoAction::SetLabel {
+            addr,
+            old,
+            new: new_label.clone(),
+        });
+        match new_label {
+            Some(l) => self.project.set_label(addr, l),
+            None => self.project.remove_label(addr),
+        }
+        self.disasm_view.invalidate_cache();
+    }
+
+    /// Perform undo.
+    fn perform_undo(&mut self) {
+        if let Some(action) = self.undo_stack.undo.pop() {
+            match &action {
+                UndoAction::SetComment { addr, old, .. } => match old {
+                    Some(c) => self.project.set_comment(*addr, c.clone()),
+                    None => self.project.remove_comment(*addr),
+                },
+                UndoAction::SetLabel { addr, old, .. } => {
+                    match old {
+                        Some(l) => self.project.set_label(*addr, l.clone()),
+                        None => self.project.remove_label(*addr),
+                    }
+                    self.disasm_view.invalidate_cache();
+                }
+            }
+            self.undo_stack.redo.push(action);
+        }
+    }
+
+    /// Perform redo.
+    fn perform_redo(&mut self) {
+        if let Some(action) = self.undo_stack.redo.pop() {
+            match &action {
+                UndoAction::SetComment { addr, new, .. } => match new {
+                    Some(c) => self.project.set_comment(*addr, c.clone()),
+                    None => self.project.remove_comment(*addr),
+                },
+                UndoAction::SetLabel { addr, new, .. } => {
+                    match new {
+                        Some(l) => self.project.set_label(*addr, l.clone()),
+                        None => self.project.remove_label(*addr),
+                    }
+                    self.disasm_view.invalidate_cache();
+                }
+            }
+            self.undo_stack.undo.push(action);
+        }
+    }
+
+    /// Render and handle the comment dialog.
+    fn render_comment_dialog(&mut self, ctx: &egui::Context) {
+        if !self.comment_dialog.open {
+            return;
+        }
+
+        let mut open = self.comment_dialog.open;
+        egui::Window::new("Comment")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(format!("Address: 0x{:08X}", self.comment_dialog.address));
+                let response = ui.text_edit_singleline(&mut self.comment_dialog.input);
+
+                // Focus the text edit on first frame
+                if response.gained_focus() || !response.has_focus() {
+                    response.request_focus();
+                }
+
+                ui.horizontal(|ui| {
+                    let ok_clicked = ui.button("OK").clicked();
+                    let enter_pressed =
+                        response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+                    if ok_clicked || enter_pressed {
+                        let addr = self.comment_dialog.address;
+                        let input = self.comment_dialog.input.trim().to_string();
+                        if input.is_empty() {
+                            self.set_comment_with_undo(addr, None);
+                        } else {
+                            self.set_comment_with_undo(addr, Some(input));
+                        }
+                        self.comment_dialog.open = false;
+                    }
+
+                    if ui.button("Delete").clicked() {
+                        let addr = self.comment_dialog.address;
+                        self.set_comment_with_undo(addr, None);
+                        self.comment_dialog.open = false;
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        self.comment_dialog.open = false;
+                    }
+                });
+            });
+        self.comment_dialog.open = open;
+    }
+
+    /// Render and handle the rename dialog.
+    fn render_rename_dialog(&mut self, ctx: &egui::Context) {
+        if !self.rename_dialog.open {
+            return;
+        }
+
+        let mut open = self.rename_dialog.open;
+        egui::Window::new("Rename")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(format!("Address: 0x{:08X}", self.rename_dialog.address));
+                let response = ui.text_edit_singleline(&mut self.rename_dialog.input);
+
+                // Focus the text edit on first frame
+                if response.gained_focus() || !response.has_focus() {
+                    response.request_focus();
+                }
+
+                ui.horizontal(|ui| {
+                    let ok_clicked = ui.button("OK").clicked();
+                    let enter_pressed =
+                        response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+                    if ok_clicked || enter_pressed {
+                        let addr = self.rename_dialog.address;
+                        let input = self.rename_dialog.input.trim().to_string();
+                        if input.is_empty() {
+                            self.set_label_with_undo(addr, None);
+                        } else {
+                            self.set_label_with_undo(addr, Some(input));
+                        }
+                        self.rename_dialog.open = false;
+                    }
+
+                    if ui.button("Delete").clicked() {
+                        let addr = self.rename_dialog.address;
+                        self.set_label_with_undo(addr, None);
+                        self.rename_dialog.open = false;
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        self.rename_dialog.open = false;
+                    }
+                });
+            });
+        self.rename_dialog.open = open;
     }
 
     /// Render and handle the go-to-address dialog.
@@ -660,7 +1054,13 @@ impl KilnApp {
 
     /// Handle keyboard shortcuts.
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
-        // Ctrl+G or G (without text focus): Go to address
+        // Don't process single-key shortcuts if a text input has focus
+        let any_dialog_open = self.goto_dialog.open
+            || self.search_dialog.open
+            || self.comment_dialog.open
+            || self.rename_dialog.open;
+
+        // Ctrl+G: Go to address
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::G)) {
             self.goto_dialog.open = true;
             self.goto_dialog.input.clear();
@@ -672,10 +1072,29 @@ impl KilnApp {
             self.open_file_dialog();
         }
 
+        // Ctrl+S: Save project
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
+            self.save_project();
+        }
+
         // Ctrl+F: Search
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::F)) {
             self.search_dialog.open = true;
             self.search_dialog.error = None;
+        }
+
+        // Ctrl+Y or Ctrl+Shift+Z: Redo (check before Ctrl+Z to avoid conflict)
+        if ctx.input(|i| {
+            (i.modifiers.ctrl && i.key_pressed(egui::Key::Y))
+                || (i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::Z))
+        }) {
+            self.perform_redo();
+        }
+        // Ctrl+Z: Undo (only without shift, so Ctrl+Shift+Z goes to redo above)
+        else if ctx.input(|i| {
+            i.modifiers.ctrl && i.key_pressed(egui::Key::Z) && !i.modifiers.shift
+        }) {
+            self.perform_undo();
         }
 
         // Alt+Left: Navigate back
@@ -688,9 +1107,39 @@ impl KilnApp {
             self.navigate_forward();
         }
 
-        // Escape: Navigate back (or close dialogs)
+        // Single-key shortcuts only when no dialog is open
+        if !any_dialog_open {
+            // ; (semicolon): Open comment dialog for selected address
+            if ctx.input(|i| i.key_pressed(egui::Key::Semicolon)) {
+                if let Some(addr) = self.get_current_selected_address() {
+                    self.comment_dialog.address = addr;
+                    self.comment_dialog.input = self
+                        .project
+                        .get_comment(addr)
+                        .unwrap_or("")
+                        .to_string();
+                    self.comment_dialog.open = true;
+                }
+            }
+
+            // N: Open rename dialog
+            if ctx.input(|i| i.key_pressed(egui::Key::N) && !i.modifiers.ctrl) {
+                if let Some(addr) = self.get_current_selected_address() {
+                    self.rename_dialog.address = addr;
+                    self.rename_dialog.input =
+                        self.project.get_label(addr).unwrap_or("").to_string();
+                    self.rename_dialog.open = true;
+                }
+            }
+        }
+
+        // Escape: Close dialogs or navigate back
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            if self.goto_dialog.open {
+            if self.comment_dialog.open {
+                self.comment_dialog.open = false;
+            } else if self.rename_dialog.open {
+                self.rename_dialog.open = false;
+            } else if self.goto_dialog.open {
                 self.goto_dialog.open = false;
             } else if self.search_dialog.open {
                 self.search_dialog.open = false;
@@ -698,6 +1147,19 @@ impl KilnApp {
                 self.navigate_back();
             }
         }
+    }
+
+    /// Get the currently selected instruction address in the disassembly view.
+    fn get_current_selected_address(&self) -> Option<u64> {
+        if self.active_tab != ActiveTab::Disassembly {
+            return None;
+        }
+        self.disasm_view.selected_address.or_else(|| {
+            self.disasm_view
+                .cached_addresses
+                .first()
+                .copied()
+        })
     }
 }
 
@@ -710,12 +1172,30 @@ impl eframe::App for KilnApp {
             self.navigate_to_address(addr);
         }
 
+        // Check if disasm view has a pending comment request
+        if let Some(addr) = self.disasm_view.take_pending_comment() {
+            self.comment_dialog.address = addr;
+            self.comment_dialog.input =
+                self.project.get_comment(addr).unwrap_or("").to_string();
+            self.comment_dialog.open = true;
+        }
+
+        // Check if disasm view has a pending rename request
+        if let Some(addr) = self.disasm_view.take_pending_rename() {
+            self.rename_dialog.address = addr;
+            self.rename_dialog.input =
+                self.project.get_label(addr).unwrap_or("").to_string();
+            self.rename_dialog.open = true;
+        }
+
         self.handle_shortcuts(ctx);
         self.render_menu_bar(ctx);
         self.render_status_bar(ctx);
         self.render_tab_bar(ctx);
         self.render_goto_dialog(ctx);
         self.render_search_dialog(ctx);
+        self.render_comment_dialog(ctx);
+        self.render_rename_dialog(ctx);
         self.render_sidebar(ctx);
 
         // Main central panel
@@ -735,7 +1215,8 @@ impl eframe::App for KilnApp {
                 }
                 ActiveTab::Disassembly => {
                     let image_ref = self.image.as_ref();
-                    self.disasm_view.render(ui, &self.analysis, image_ref);
+                    self.disasm_view
+                        .render(ui, &self.analysis, image_ref, &self.project);
                 }
             }
         });

@@ -7,6 +7,7 @@ pub mod disasm;
 pub mod graph;
 pub mod loader;
 pub mod model;
+pub mod perf;
 
 pub use debug_info::{DebugInfo, parse_debug_info};
 pub use loader::load_binary;

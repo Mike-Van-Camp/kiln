@@ -239,6 +239,8 @@ pub struct KilnApp {
     pub decompiler_view: DecompilerView,
     /// Debugger view (Sprint 18).
     pub debugger_view: DebuggerView,
+    /// Progress tracker for long-running operations (Sprint 20).
+    pub progress: Option<kiln_core::perf::ProgressTracker>,
 }
 
 impl Default for KilnApp {
@@ -278,6 +280,7 @@ impl Default for KilnApp {
             collab_view: CollabView::default(),
             decompiler_view: DecompilerView::default(),
             debugger_view: DebuggerView::default(),
+            progress: None,
         }
     }
 }
@@ -561,6 +564,12 @@ impl KilnApp {
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&self.status_message);
+                // Progress bar for long-running operations (Sprint 20)
+                if let Some(ref progress) = self.progress {
+                    let frac = progress.progress_fraction();
+                    let msg = progress.message();
+                    ui.add(egui::ProgressBar::new(frac).text(&msg));
+                }
                 if let Some(path) = &self.project_path {
                     ui.separator();
                     if let Some(name) = path.file_name() {

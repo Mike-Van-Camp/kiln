@@ -145,28 +145,22 @@ pub fn check_syntax(code: &str) -> Result<AST, String> {
 }
 
 fn register_print_functions(engine: &mut Engine, output: Rc<RefCell<Vec<OutputLine>>>) {
+    // Use Rhai's on_print callback instead of register_fn to avoid
+    // conflicting with the built-in print statement semantics.
     let out = Rc::clone(&output);
-    engine.register_fn("print", move |msg: ImmutableString| {
+    engine.on_print(move |text| {
         out.borrow_mut().push(OutputLine {
-            text: msg.to_string(),
+            text: text.to_string(),
             kind: OutputKind::Normal,
         });
     });
+
     let out = Rc::clone(&output);
-    engine.register_fn("print", move |val: i64| {
-        out.borrow_mut().push(OutputLine { text: val.to_string(), kind: OutputKind::Normal });
-    });
-    let out = Rc::clone(&output);
-    engine.register_fn("print", move |val: f64| {
-        out.borrow_mut().push(OutputLine { text: val.to_string(), kind: OutputKind::Normal });
-    });
-    let out = Rc::clone(&output);
-    engine.register_fn("print", move |val: bool| {
-        out.borrow_mut().push(OutputLine { text: val.to_string(), kind: OutputKind::Normal });
-    });
-    let out = Rc::clone(&output);
-    engine.register_fn("print", move |val: Dynamic| {
-        out.borrow_mut().push(OutputLine { text: format!("{val}"), kind: OutputKind::Normal });
+    engine.on_debug(move |text, _source, _pos| {
+        out.borrow_mut().push(OutputLine {
+            text: text.to_string(),
+            kind: OutputKind::Info,
+        });
     });
 }
 

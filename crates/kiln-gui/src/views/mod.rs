@@ -1,5 +1,6 @@
 //! GUI view modules for Kiln.
 
+pub mod console_view;
 pub mod disasm_view;
 pub mod exports_view;
 pub mod graph_view;

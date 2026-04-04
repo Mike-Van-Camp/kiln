@@ -7,6 +7,7 @@ use kiln_core::disasm::disassemble_executable_sections;
 use kiln_core::model::BinaryImage;
 use std::path::PathBuf;
 
+use crate::views::console_view::ConsoleView;
 use crate::views::disasm_view::DisasmView;
 use crate::views::exports_view::ExportsView;
 use crate::views::graph_view::GraphView;
@@ -27,6 +28,7 @@ pub enum ActiveTab {
     Imports,
     Exports,
     Types,
+    Console,
 }
 
 /// State for the Go-to-Address dialog.
@@ -219,6 +221,8 @@ pub struct KilnApp {
     pub apply_type_dialog: ApplyTypeDialog,
     /// Parsed debug info from DWARF/PDB sections (Sprint 12).
     pub debug_info: DebugInfo,
+    /// Script console view (Sprint 13).
+    pub console_view: ConsoleView,
 }
 
 impl Default for KilnApp {
@@ -253,6 +257,7 @@ impl Default for KilnApp {
             enum_editor_dialog: EnumEditorDialog::default(),
             apply_type_dialog: ApplyTypeDialog::default(),
             debug_info: DebugInfo::default(),
+            console_view: ConsoleView::default(),
         }
     }
 }
@@ -369,6 +374,10 @@ impl KilnApp {
                 self.active_tab = ActiveTab::Disassembly;
                 self.disasm_view.scroll_to_address = Some(addr);
             }
+            ActiveTab::Console => {
+                self.active_tab = ActiveTab::Disassembly;
+                self.disasm_view.scroll_to_address = Some(addr);
+            }
         }
     }
 
@@ -406,6 +415,11 @@ impl KilnApp {
                     }
                     if ui.button("Open Project...").clicked() {
                         self.open_project_dialog();
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("Run Script...").clicked() {
+                        self.run_script_dialog();
                         ui.close_menu();
                     }
                     ui.separator();
@@ -583,6 +597,13 @@ impl KilnApp {
                 {
                     self.active_tab = ActiveTab::Types;
                 }
+                ui.separator();
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Console, "Console")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Console;
+                }
             });
         });
     }
@@ -600,7 +621,7 @@ impl KilnApp {
                 ActiveTab::Hex => self.render_section_sidebar(ui),
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
                 ActiveTab::Graph => self.render_graph_function_sidebar(ui),
-                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types => {
+                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console => {
                     self.render_info_sidebar(ui);
                 }
             });
@@ -762,6 +783,20 @@ impl KilnApp {
     fn open_file_dialog(&mut self) {
         if let Some(path) = rfd::FileDialog::new().set_title("Open Binary").pick_file() {
             self.open_binary(&path);
+        }
+    }
+
+    /// Show file dialog to pick and run a .rhai script file (Sprint 13).
+    fn run_script_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Run Script")
+            .add_filter("Rhai Script", &["rhai"])
+            .pick_file()
+        {
+            self.console_view
+                .run_file(&path, &self.analysis, &mut self.project);
+            self.active_tab = ActiveTab::Console;
+            self.disasm_view.invalidate_cache();
         }
     }
 
@@ -1589,7 +1624,7 @@ impl eframe::App for KilnApp {
 
         // Main central panel
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.image.is_none() && self.active_tab != ActiveTab::Types {
+            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console {
                 ui.centered_and_justified(|ui| {
                     ui.heading("Open a binary file to get started\n(File → Open or Ctrl+O)");
                 });
@@ -1648,6 +1683,9 @@ impl eframe::App for KilnApp {
                             }
                         }
                     }
+                }
+                ActiveTab::Console => {
+                    self.console_view.render(ui, &self.analysis, &mut self.project);
                 }
             }
         });

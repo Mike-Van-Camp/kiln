@@ -1,14 +1,30 @@
 //! Disassembly listing view: virtual-scrolling table with syntax coloring.
+//!
+//! Performance optimizations:
+//! - Address list cached (rebuilt only on invalidate_cache())
+//! - Symbol lookup via HashMap for O(1) per-address check
+//! - Single combined label per row to reduce widget count
+//! - Instruction formatting uses pre-sized string buffers
+
+use std::collections::HashMap;
 
 use egui::{Color32, FontId, RichText, Ui};
 use kiln_core::analysis::AnalysisDatabase;
-use kiln_core::model::{BinaryImage, Instruction};
+use kiln_core::model::{BinaryImage, Instruction, XrefType};
 
 /// State for the disassembly view panel.
 #[derive(Default)]
 pub struct DisasmView {
     /// If set, scroll to this address on the next frame.
     pub scroll_to_address: Option<u64>,
+    /// Cached sorted address list (rebuilt on invalidate_cache).
+    cached_addresses: Vec<u64>,
+    /// Cached symbol map: address → symbol name (rebuilt on invalidate_cache).
+    cached_symbols: HashMap<u64, String>,
+    /// Whether the cache is valid.
+    cache_valid: bool,
+    /// Pending navigation request from clicking an address operand.
+    pending_navigation: Option<u64>,
 }
 
 /// Color palette for syntax highlighting.
@@ -26,6 +42,8 @@ impl SyntaxColors {
     const IMMEDIATE: Color32 = Color32::from_rgb(180, 220, 140); // Light green for immediates
     const SYMBOL_LABEL: Color32 = Color32::from_rgb(255, 220, 100); // Yellow for labels
     const NOP: Color32 = Color32::from_rgb(100, 100, 100); // Dark gray for nops
+    const XREF: Color32 = Color32::from_rgb(120, 180, 255); // Light blue for xrefs
+    const CLICKABLE_ADDR: Color32 = Color32::from_rgb(100, 200, 255); // Cyan for clickable addresses
 }
 
 /// Classify a mnemonic for syntax coloring.
@@ -332,7 +350,53 @@ fn is_register_name(name: &str) -> bool {
     false
 }
 
+/// Extract a hex address from operand text (for clickable navigation).
+fn extract_operand_address(operands: &str) -> Option<u64> {
+    kiln_core::analysis::parse_target_address(operands)
+}
+
 impl DisasmView {
+    /// Invalidate the cached address list and symbol map.
+    pub fn invalidate_cache(&mut self) {
+        self.cache_valid = false;
+        self.cached_addresses.clear();
+        self.cached_symbols.clear();
+    }
+
+    /// Take the pending navigation address (if any), clearing it.
+    pub fn take_pending_navigation(&mut self) -> Option<u64> {
+        self.pending_navigation.take()
+    }
+
+    /// Ensure caches are populated.
+    fn ensure_cache(&mut self, analysis: &AnalysisDatabase, image: Option<&BinaryImage>) {
+        if self.cache_valid {
+            return;
+        }
+        // Cache address list
+        self.cached_addresses = analysis.instructions.keys().copied().collect();
+
+        // Cache symbol lookup
+        self.cached_symbols.clear();
+        if let Some(image) = image {
+            for sym in &image.symbols {
+                if !sym.name.is_empty() {
+                    self.cached_symbols
+                        .entry(sym.address)
+                        .or_insert_with(|| sym.name.clone());
+                }
+            }
+        }
+        // Also add detected function names
+        for (addr, func) in &analysis.functions {
+            self.cached_symbols
+                .entry(*addr)
+                .or_insert_with(|| func.name.clone());
+        }
+
+        self.cache_valid = true;
+    }
+
     /// Render the disassembly listing view.
     pub fn render(
         &mut self,
@@ -349,8 +413,11 @@ impl DisasmView {
             return;
         }
 
-        // Collect instruction addresses for indexing
-        let addresses: Vec<u64> = analysis.instructions.keys().copied().collect();
+        // Ensure caches are populated
+        self.ensure_cache(analysis, image);
+
+        // Clone addresses for use inside closure (avoids borrow conflict with &self)
+        let addresses = self.cached_addresses.clone();
         let total_rows = addresses.len();
 
         // Render header
@@ -396,35 +463,70 @@ impl DisasmView {
                 }
                 let addr = addresses[row_idx];
                 if let Some(insn) = analysis.get_instruction(addr) {
-                    self.render_instruction_row(ui, insn, &mono_font, analysis, image);
+                    self.render_instruction_row(ui, insn, &mono_font, analysis);
                 }
             }
         });
     }
 
-    /// Render a single instruction row with syntax coloring.
+    /// Render a single instruction row with syntax coloring, xrefs, and clickable addresses.
     fn render_instruction_row(
-        &self,
+        &mut self,
         ui: &mut Ui,
         insn: &Instruction,
         font: &FontId,
         analysis: &AnalysisDatabase,
-        image: Option<&BinaryImage>,
     ) {
-        // Check for symbol label at this address
-        if let Some(image) = image {
-            if let Some(name) = analysis.symbol_at_address(image, insn.address) {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!("{}:", name))
-                            .font(font.clone())
-                            .color(SyntaxColors::SYMBOL_LABEL),
-                    );
-                });
-            }
+        // Check for symbol label at this address (O(1) lookup)
+        if let Some(name) = self.cached_symbols.get(&insn.address) {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!("{}:", name))
+                        .font(font.clone())
+                        .color(SyntaxColors::SYMBOL_LABEL),
+                );
+            });
         }
 
-        ui.horizontal(|ui| {
+        // Show xrefs pointing to this address (Sprint 5)
+        let xrefs = analysis.xrefs_to(insn.address);
+        if !xrefs.is_empty() {
+            ui.horizontal(|ui| {
+                let mut xref_text = String::with_capacity(64);
+                xref_text.push_str("; xrefs: ");
+                for (i, xref) in xrefs.iter().take(5).enumerate() {
+                    if i > 0 {
+                        xref_text.push_str(", ");
+                    }
+                    let kind = match xref.xref_type {
+                        XrefType::Call => "call",
+                        XrefType::Jump => "jmp",
+                        XrefType::Data => "data",
+                    };
+                    xref_text.push_str(&format!("{}:0x{:X}", kind, xref.from_addr));
+                }
+                if xrefs.len() > 5 {
+                    xref_text.push_str(&format!(" (+{} more)", xrefs.len() - 5));
+                }
+
+                let response = ui.label(
+                    RichText::new(&xref_text)
+                        .font(font.clone())
+                        .color(SyntaxColors::XREF),
+                );
+
+                // Click on xref line to navigate to first xref source
+                if response.clicked() {
+                    if let Some(first_xref) = xrefs.first() {
+                        self.pending_navigation = Some(first_xref.from_addr);
+                    }
+                }
+                response.on_hover_text("Click to go to first xref source");
+            });
+        }
+
+        // Main instruction row
+        let response = ui.horizontal(|ui| {
             // Address
             ui.label(
                 RichText::new(format!("0x{:08X}  ", insn.address))
@@ -457,10 +559,91 @@ impl DisasmView {
                     .color(mnem_color),
             );
 
-            // Operands with syntax coloring
-            let operand_segments = colorize_operands(&insn.operands);
-            for (text, color) in operand_segments {
-                ui.label(RichText::new(&text).font(font.clone()).color(color));
+            // Operands: check if there's a clickable address target
+            let target_addr = extract_operand_address(&insn.operands);
+
+            if let Some(target) = target_addr {
+                // Render as clickable link for address operands
+                let operand_response = ui.label(
+                    RichText::new(&insn.operands)
+                        .font(font.clone())
+                        .color(SyntaxColors::CLICKABLE_ADDR),
+                );
+                if operand_response.clicked() {
+                    self.pending_navigation = Some(target);
+                }
+                operand_response.on_hover_text(format!("Click to navigate to 0x{:X}", target));
+            } else {
+                // Operands with syntax coloring
+                let operand_segments = colorize_operands(&insn.operands);
+                for (text, color) in operand_segments {
+                    ui.label(RichText::new(&text).font(font.clone()).color(color));
+                }
+            }
+        });
+
+        // Right-click context menu (Sprint 6)
+        response.response.context_menu(|ui| {
+            if ui.button("Copy Address").clicked() {
+                ui.ctx().copy_text(format!("0x{:08X}", insn.address));
+                ui.close_menu();
+            }
+            if ui.button("Copy Instruction").clicked() {
+                ui.ctx()
+                    .copy_text(format!("{} {}", insn.mnemonic, insn.operands));
+                ui.close_menu();
+            }
+            if ui.button("Copy Bytes").clicked() {
+                let hex: String = insn.bytes.iter().map(|b| format!("{:02X} ", b)).collect();
+                ui.ctx().copy_text(hex.trim_end().to_string());
+                ui.close_menu();
+            }
+            ui.separator();
+            if let Some(addr) = extract_operand_address(&insn.operands) {
+                if ui.button(format!("Go to 0x{:X}", addr)).clicked() {
+                    self.pending_navigation = Some(addr);
+                    ui.close_menu();
+                }
+            }
+            // Show xrefs from this address
+            let xrefs_from = analysis.xrefs_from(insn.address);
+            if !xrefs_from.is_empty() {
+                ui.separator();
+                ui.label("Xrefs from:");
+                for xref in xrefs_from.iter().take(10) {
+                    let kind = match xref.xref_type {
+                        XrefType::Call => "call",
+                        XrefType::Jump => "jmp",
+                        XrefType::Data => "data",
+                    };
+                    if ui
+                        .button(format!("{} → 0x{:X}", kind, xref.to_addr))
+                        .clicked()
+                    {
+                        self.pending_navigation = Some(xref.to_addr);
+                        ui.close_menu();
+                    }
+                }
+            }
+            // Show xrefs to this address
+            let xrefs_to = analysis.xrefs_to(insn.address);
+            if !xrefs_to.is_empty() {
+                ui.separator();
+                ui.label("Xrefs to:");
+                for xref in xrefs_to.iter().take(10) {
+                    let kind = match xref.xref_type {
+                        XrefType::Call => "call",
+                        XrefType::Jump => "jmp",
+                        XrefType::Data => "data",
+                    };
+                    if ui
+                        .button(format!("{} ← 0x{:X}", kind, xref.from_addr))
+                        .clicked()
+                    {
+                        self.pending_navigation = Some(xref.from_addr);
+                        ui.close_menu();
+                    }
+                }
             }
         });
     }

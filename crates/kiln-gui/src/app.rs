@@ -7,6 +7,7 @@ use kiln_core::model::BinaryImage;
 use std::path::PathBuf;
 
 use crate::views::disasm_view::DisasmView;
+use crate::views::graph_view::GraphView;
 use crate::views::hex_view::HexView;
 
 /// Which main view tab is currently active.
@@ -14,6 +15,7 @@ use crate::views::hex_view::HexView;
 pub enum ActiveTab {
     Hex,
     Disassembly,
+    Graph,
 }
 
 /// State for the Go-to-Address dialog.
@@ -151,6 +153,8 @@ pub struct KilnApp {
     pub hex_view: HexView,
     /// Disassembly view state.
     pub disasm_view: DisasmView,
+    /// Graph view state.
+    pub graph_view: GraphView,
     /// Status message displayed in the status bar.
     pub status_message: String,
     /// Currently selected section index in the sidebar.
@@ -185,6 +189,7 @@ impl Default for KilnApp {
             active_tab: ActiveTab::Hex,
             hex_view: HexView::default(),
             disasm_view: DisasmView::default(),
+            graph_view: GraphView::default(),
             status_message: "No file loaded".to_string(),
             selected_section: None,
             selected_symbol: None,
@@ -254,6 +259,7 @@ impl KilnApp {
                     kiln_project::Project::new(path.to_string_lossy().into_owned());
                 self.project_path = None;
                 self.undo_stack = UndoStack::default();
+                self.graph_view = GraphView::default();
                 self.image = Some(image);
                 self.active_tab = ActiveTab::Hex;
             }
@@ -288,6 +294,15 @@ impl KilnApp {
             }
             ActiveTab::Disassembly => {
                 self.disasm_view.scroll_to_address = Some(addr);
+            }
+            ActiveTab::Graph => {
+                // In graph view, navigate to the function containing this address
+                for func in self.analysis.functions.values() {
+                    if func.blocks.iter().any(|b| addr >= b.start_addr && addr < b.end_addr) {
+                        self.graph_view.select_function(func.entry_addr);
+                        return;
+                    }
+                }
             }
         }
     }
@@ -436,6 +451,18 @@ impl KilnApp {
                 {
                     self.active_tab = ActiveTab::Disassembly;
                 }
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Graph, "Graph")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Graph;
+                    // Auto-select first function if none selected
+                    if self.graph_view.selected_function.is_none() {
+                        if let Some(&addr) = self.analysis.functions.keys().next() {
+                            self.graph_view.select_function(addr);
+                        }
+                    }
+                }
             });
         });
     }
@@ -452,6 +479,7 @@ impl KilnApp {
             .show(ctx, |ui| match self.active_tab {
                 ActiveTab::Hex => self.render_section_sidebar(ui),
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
+                ActiveTab::Graph => self.render_graph_function_sidebar(ui),
             });
     }
 
@@ -542,6 +570,34 @@ impl KilnApp {
             });
         } else {
             ui.label("No binary loaded");
+        }
+    }
+
+    /// Render the function list sidebar for the Graph view.
+    fn render_graph_function_sidebar(&mut self, ui: &mut egui::Ui) {
+        let func_count = self.analysis.functions.len();
+        ui.heading(format!("Functions ({})", func_count));
+        ui.separator();
+
+        if func_count > 0 {
+            let funcs: Vec<(String, u64)> = self
+                .analysis
+                .functions
+                .values()
+                .map(|f| (f.name.clone(), f.entry_addr))
+                .collect();
+
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (name, addr) in &funcs {
+                    let label = format!("0x{:08x}  {}", addr, name);
+                    let selected = self.graph_view.selected_function == Some(*addr);
+                    if ui.selectable_label(selected, &label).clicked() {
+                        self.graph_view.select_function(*addr);
+                    }
+                }
+            });
+        } else {
+            ui.label("No functions detected");
         }
     }
 
@@ -658,6 +714,7 @@ impl KilnApp {
                 self.selected_section = None;
                 self.selected_symbol = None;
                 self.nav_history = NavigationHistory::default();
+                self.graph_view = GraphView::default();
                 self.image = Some(image);
                 self.active_tab = ActiveTab::Hex;
             }
@@ -1217,6 +1274,9 @@ impl eframe::App for KilnApp {
                     let image_ref = self.image.as_ref();
                     self.disasm_view
                         .render(ui, &self.analysis, image_ref, &self.project);
+                }
+                ActiveTab::Graph => {
+                    self.graph_view.render(ui, &self.analysis);
                 }
             }
         });

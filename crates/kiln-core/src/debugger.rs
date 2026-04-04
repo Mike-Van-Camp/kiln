@@ -2,18 +2,13 @@
 //! (Sprint 18).
 
 /// Current state of the debug session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DebuggerState {
+    #[default]
     Disconnected,
     Running,
     Paused,
     Exited,
-}
-
-impl Default for DebuggerState {
-    fn default() -> Self {
-        DebuggerState::Disconnected
-    }
 }
 
 /// A breakpoint set at a specific address.

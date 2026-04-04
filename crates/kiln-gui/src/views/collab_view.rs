@@ -3,6 +3,7 @@
 use kiln_project::{AnnotationChange, MergeConflict, MergeResolution, Project};
 
 /// State for the collaborative analysis panel.
+#[derive(Default)]
 pub struct CollabView {
     /// Current author name.
     pub author_name: String,
@@ -16,19 +17,6 @@ pub struct CollabView {
     pub show_history: bool,
     /// JSON text area for import.
     pub import_text: String,
-}
-
-impl Default for CollabView {
-    fn default() -> Self {
-        Self {
-            author_name: String::new(),
-            merge_conflicts: Vec::new(),
-            merge_resolutions: Vec::new(),
-            status_message: None,
-            show_history: false,
-            import_text: String::new(),
-        }
-    }
 }
 
 impl CollabView {
@@ -160,21 +148,21 @@ impl CollabView {
                 });
             }
 
-            if all_resolved && !self.merge_conflicts.is_empty() {
-                if ui.button("Apply All Resolutions").clicked() {
-                    for (i, conflict) in self.merge_conflicts.iter().enumerate() {
-                        if let Some(res) = self.merge_resolutions[i] {
-                            Project::resolve_conflict(
-                                &mut project.annotations,
-                                conflict,
-                                res,
-                            );
-                        }
+            if all_resolved && !self.merge_conflicts.is_empty()
+                && ui.button("Apply All Resolutions").clicked()
+            {
+                for (i, conflict) in self.merge_conflicts.iter().enumerate() {
+                    if let Some(res) = self.merge_resolutions[i] {
+                        Project::resolve_conflict(
+                            &mut project.annotations,
+                            conflict,
+                            res,
+                        );
                     }
-                    self.merge_conflicts.clear();
-                    self.merge_resolutions.clear();
-                    self.status_message = Some("All conflicts resolved".to_string());
                 }
+                self.merge_conflicts.clear();
+                self.merge_resolutions.clear();
+                self.status_message = Some("All conflicts resolved".to_string());
             }
         }
 

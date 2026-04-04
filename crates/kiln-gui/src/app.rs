@@ -7,8 +7,11 @@ use kiln_core::model::BinaryImage;
 use std::path::PathBuf;
 
 use crate::views::disasm_view::DisasmView;
+use crate::views::exports_view::ExportsView;
 use crate::views::graph_view::GraphView;
 use crate::views::hex_view::HexView;
+use crate::views::imports_view::ImportsView;
+use crate::views::strings_view::StringsView;
 
 /// Which main view tab is currently active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +19,9 @@ pub enum ActiveTab {
     Hex,
     Disassembly,
     Graph,
+    Strings,
+    Imports,
+    Exports,
 }
 
 /// State for the Go-to-Address dialog.
@@ -155,6 +161,12 @@ pub struct KilnApp {
     pub disasm_view: DisasmView,
     /// Graph view state.
     pub graph_view: GraphView,
+    /// Strings view state.
+    pub strings_view: StringsView,
+    /// Imports view state.
+    pub imports_view: ImportsView,
+    /// Exports view state.
+    pub exports_view: ExportsView,
     /// Status message displayed in the status bar.
     pub status_message: String,
     /// Currently selected section index in the sidebar.
@@ -190,6 +202,9 @@ impl Default for KilnApp {
             hex_view: HexView::default(),
             disasm_view: DisasmView::default(),
             graph_view: GraphView::default(),
+            strings_view: StringsView::default(),
+            imports_view: ImportsView::default(),
+            exports_view: ExportsView::default(),
             status_message: "No file loaded".to_string(),
             selected_section: None,
             selected_symbol: None,
@@ -260,6 +275,7 @@ impl KilnApp {
                 self.project_path = None;
                 self.undo_stack = UndoStack::default();
                 self.graph_view = GraphView::default();
+                self.strings_view.invalidate_cache();
                 self.image = Some(image);
                 self.active_tab = ActiveTab::Hex;
             }
@@ -303,6 +319,11 @@ impl KilnApp {
                         return;
                     }
                 }
+            }
+            ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports => {
+                // Switch to disassembly view to show the address
+                self.active_tab = ActiveTab::Disassembly;
+                self.disasm_view.scroll_to_address = Some(addr);
             }
         }
     }
@@ -463,6 +484,25 @@ impl KilnApp {
                         }
                     }
                 }
+                ui.separator();
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Strings, "Strings")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Strings;
+                }
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Imports, "Imports")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Imports;
+                }
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Exports, "Exports")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Exports;
+                }
             });
         });
     }
@@ -480,6 +520,9 @@ impl KilnApp {
                 ActiveTab::Hex => self.render_section_sidebar(ui),
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
                 ActiveTab::Graph => self.render_graph_function_sidebar(ui),
+                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports => {
+                    self.render_info_sidebar(ui);
+                }
             });
     }
 
@@ -489,7 +532,7 @@ impl KilnApp {
         ui.separator();
 
         if let Some(image) = &self.image {
-            let sections: Vec<(String, u64, u64, u64, bool)> = image
+            let sections: Vec<(String, u64, u64, u64, bool, bool, bool)> = image
                 .sections
                 .iter()
                 .map(|s| {
@@ -498,18 +541,22 @@ impl KilnApp {
                         s.address,
                         s.size,
                         s.file_offset,
+                        s.readable,
+                        s.writable,
                         s.executable,
                     )
                 })
                 .collect();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                for (i, (name, addr, size, offset, executable)) in sections.iter().enumerate() {
-                    let label = if *executable {
-                        format!("{} (0x{:x}, {} bytes) [X]", name, addr, size)
-                    } else {
-                        format!("{} (0x{:x}, {} bytes)", name, addr, size)
-                    };
+                for (i, (name, addr, size, offset, readable, writable, executable)) in
+                    sections.iter().enumerate()
+                {
+                    let r = if *readable { 'R' } else { '-' };
+                    let w = if *writable { 'W' } else { '-' };
+                    let x = if *executable { 'X' } else { '-' };
+                    let label =
+                        format!("{} (0x{:x}, {} bytes) [{}{}{}]", name, addr, size, r, w, x);
 
                     let selected = self.selected_section == Some(i);
                     if ui.selectable_label(selected, &label).clicked() {
@@ -598,6 +645,25 @@ impl KilnApp {
             });
         } else {
             ui.label("No functions detected");
+        }
+    }
+
+    /// Render a simple info sidebar for Strings/Imports/Exports views.
+    fn render_info_sidebar(&self, ui: &mut egui::Ui) {
+        ui.heading("Info");
+        ui.separator();
+        if let Some(image) = &self.image {
+            ui.label(format!("File: {}", image.filename));
+            ui.label(format!("Format: {}", image.format));
+            ui.label(format!("Arch: {}", image.architecture));
+            ui.label(format!("Size: {} bytes", image.data.len()));
+            ui.separator();
+            ui.label(format!("Sections: {}", image.sections.len()));
+            ui.label(format!("Symbols: {}", image.symbols.len()));
+            ui.label(format!("Imports: {}", image.imports().len()));
+            ui.label(format!("Exports: {}", image.exports().len()));
+        } else {
+            ui.label("No binary loaded");
         }
     }
 
@@ -715,6 +781,7 @@ impl KilnApp {
                 self.selected_symbol = None;
                 self.nav_history = NavigationHistory::default();
                 self.graph_view = GraphView::default();
+                self.strings_view.invalidate_cache();
                 self.image = Some(image);
                 self.active_tab = ActiveTab::Hex;
             }
@@ -1277,6 +1344,30 @@ impl eframe::App for KilnApp {
                 }
                 ActiveTab::Graph => {
                     self.graph_view.render(ui, &self.analysis);
+                }
+                ActiveTab::Strings => {
+                    if let Some(image) = self.image.clone() {
+                        if let Some(addr) = self.strings_view.render(ui, &image) {
+                            self.active_tab = ActiveTab::Disassembly;
+                            self.navigate_to_address(addr);
+                        }
+                    }
+                }
+                ActiveTab::Imports => {
+                    if let Some(image) = self.image.clone() {
+                        if let Some(addr) = self.imports_view.render(ui, &image) {
+                            self.active_tab = ActiveTab::Disassembly;
+                            self.navigate_to_address(addr);
+                        }
+                    }
+                }
+                ActiveTab::Exports => {
+                    if let Some(image) = self.image.clone() {
+                        if let Some(addr) = self.exports_view.render(ui, &image) {
+                            self.active_tab = ActiveTab::Disassembly;
+                            self.navigate_to_address(addr);
+                        }
+                    }
                 }
             }
         });

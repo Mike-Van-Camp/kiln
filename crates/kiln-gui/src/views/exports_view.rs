@@ -1,0 +1,68 @@
+//! Exports view: display exported symbols from the binary.
+
+use egui::{Color32, FontId, RichText, Ui};
+use kiln_core::model::BinaryImage;
+
+/// State for the exports view panel.
+#[derive(Default)]
+pub struct ExportsView {
+    filter: String,
+}
+
+impl ExportsView {
+    /// Render the exports view. Returns an optional address to navigate to.
+    pub fn render(&mut self, ui: &mut Ui, image: &BinaryImage) -> Option<u64> {
+        let mut navigate_to = None;
+
+        let exports = image.exports();
+
+        // Filter bar
+        ui.horizontal(|ui| {
+            ui.label("Filter:");
+            ui.text_edit_singleline(&mut self.filter);
+        });
+        ui.separator();
+
+        let filter_lower = self.filter.to_lowercase();
+        let filtered: Vec<_> = exports
+            .iter()
+            .filter(|s| filter_lower.is_empty() || s.name.to_lowercase().contains(&filter_lower))
+            .collect();
+
+        ui.label(format!(
+            "{} exports ({} shown)",
+            exports.len(),
+            filtered.len()
+        ));
+        ui.separator();
+
+        // Header
+        let mono = FontId::monospace(13.0);
+        ui.horizontal(|ui| {
+            let header = format!("{:<12} {:<8} {}", "Address", "Size", "Name");
+            ui.label(RichText::new(header).font(mono.clone()).color(Color32::GRAY));
+        });
+        ui.separator();
+
+        // Scrollable list
+        let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
+        let total_rows = filtered.len();
+
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show_rows(ui, row_height, total_rows, |ui, row_range| {
+                for row_idx in row_range {
+                    let sym = filtered[row_idx];
+                    let line =
+                        format!("0x{:08X}   {:<6}   {}", sym.address, sym.size, sym.name);
+                    let response =
+                        ui.selectable_label(false, RichText::new(&line).font(mono.clone()));
+                    if response.clicked() {
+                        navigate_to = Some(sym.address);
+                    }
+                }
+            });
+
+        navigate_to
+    }
+}

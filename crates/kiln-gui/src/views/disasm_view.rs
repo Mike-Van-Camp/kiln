@@ -31,6 +31,8 @@ pub struct DisasmView {
     pending_comment_addr: Option<u64>,
     /// Pending rename request from context menu (address to rename).
     pending_rename_addr: Option<u64>,
+    /// Pending apply-type request from context menu.
+    pending_apply_type_addr: Option<u64>,
 }
 
 /// Color palette for syntax highlighting.
@@ -385,6 +387,11 @@ impl DisasmView {
         self.pending_rename_addr.take()
     }
 
+    /// Take the pending apply-type address (if any), clearing it.
+    pub fn take_pending_apply_type(&mut self) -> Option<u64> {
+        self.pending_apply_type_addr.take()
+    }
+
     /// Ensure caches are populated.
     fn ensure_cache(
         &mut self,
@@ -530,6 +537,22 @@ impl DisasmView {
             });
         }
 
+        // Show applied type annotation (Sprint 11)
+        if let Some(applied) = project.get_applied_type(insn.address) {
+            let type_label = if let Some(ref lbl) = applied.label {
+                format!("; type: {} ({})", applied.type_name, lbl)
+            } else {
+                format!("; type: {}", applied.type_name)
+            };
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(&type_label)
+                        .font(font.clone())
+                        .color(SyntaxColors::COMMENT),
+                );
+            });
+        }
+
         // Show xrefs pointing to this address (Sprint 5)
         let xrefs = analysis.xrefs_to(insn.address);
         if !xrefs.is_empty() {
@@ -653,6 +676,10 @@ impl DisasmView {
             }
             if ui.button("Rename  N").clicked() {
                 self.pending_rename_addr = Some(insn_addr);
+                ui.close_menu();
+            }
+            if ui.button("Apply Type...").clicked() {
+                self.pending_apply_type_addr = Some(insn_addr);
                 ui.close_menu();
             }
             ui.separator();

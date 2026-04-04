@@ -6,3 +6,4 @@ pub mod graph_view;
 pub mod hex_view;
 pub mod imports_view;
 pub mod strings_view;
+pub mod types_view;

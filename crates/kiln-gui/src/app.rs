@@ -12,6 +12,9 @@ use crate::views::graph_view::GraphView;
 use crate::views::hex_view::HexView;
 use crate::views::imports_view::ImportsView;
 use crate::views::strings_view::StringsView;
+use crate::views::types_view::{
+    ApplyTypeDialog, EnumEditorDialog, StructEditorDialog, TypesView,
+};
 
 /// Which main view tab is currently active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +25,7 @@ pub enum ActiveTab {
     Strings,
     Imports,
     Exports,
+    Types,
 }
 
 /// State for the Go-to-Address dialog.
@@ -204,6 +208,14 @@ pub struct KilnApp {
     pub help_dialog: HelpDialog,
     /// Whether dark theme is active (Sprint 10).
     pub dark_mode: bool,
+    /// Types view state (Sprint 11).
+    pub types_view: TypesView,
+    /// Struct editor dialog (Sprint 11).
+    pub struct_editor_dialog: StructEditorDialog,
+    /// Enum editor dialog (Sprint 11).
+    pub enum_editor_dialog: EnumEditorDialog,
+    /// Apply-type dialog (Sprint 11).
+    pub apply_type_dialog: ApplyTypeDialog,
 }
 
 impl Default for KilnApp {
@@ -233,6 +245,10 @@ impl Default for KilnApp {
             error_dialog: None,
             help_dialog: HelpDialog::default(),
             dark_mode: true,
+            types_view: TypesView::default(),
+            struct_editor_dialog: StructEditorDialog::default(),
+            enum_editor_dialog: EnumEditorDialog::default(),
+            apply_type_dialog: ApplyTypeDialog::default(),
         }
     }
 }
@@ -341,7 +357,7 @@ impl KilnApp {
                     }
                 }
             }
-            ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports => {
+            ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types => {
                 // Switch to disassembly view to show the address
                 self.active_tab = ActiveTab::Disassembly;
                 self.disasm_view.scroll_to_address = Some(addr);
@@ -539,6 +555,12 @@ impl KilnApp {
                 {
                     self.active_tab = ActiveTab::Exports;
                 }
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Types, "Types")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Types;
+                }
             });
         });
     }
@@ -556,7 +578,7 @@ impl KilnApp {
                 ActiveTab::Hex => self.render_section_sidebar(ui),
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
                 ActiveTab::Graph => self.render_graph_function_sidebar(ui),
-                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports => {
+                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types => {
                     self.render_info_sidebar(ui);
                 }
             });
@@ -1227,7 +1249,10 @@ impl KilnApp {
             || self.comment_dialog.open
             || self.rename_dialog.open
             || self.help_dialog.open
-            || self.error_dialog.is_some();
+            || self.error_dialog.is_some()
+            || self.struct_editor_dialog.open
+            || self.enum_editor_dialog.open
+            || self.apply_type_dialog.open;
 
         // F1: Help
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
@@ -1311,6 +1336,12 @@ impl KilnApp {
                 self.error_dialog = None;
             } else if self.help_dialog.open {
                 self.help_dialog.open = false;
+            } else if self.struct_editor_dialog.open {
+                self.struct_editor_dialog.open = false;
+            } else if self.enum_editor_dialog.open {
+                self.enum_editor_dialog.open = false;
+            } else if self.apply_type_dialog.open {
+                self.apply_type_dialog.open = false;
             } else if self.comment_dialog.open {
                 self.comment_dialog.open = false;
             } else if self.rename_dialog.open {
@@ -1459,6 +1490,22 @@ impl eframe::App for KilnApp {
             self.rename_dialog.open = true;
         }
 
+        // Check if hex view has a pending apply-type request
+        if let Some(addr) = self.hex_view.take_pending_apply_type() {
+            self.apply_type_dialog.open = true;
+            self.apply_type_dialog.address = addr;
+            self.apply_type_dialog.selected_type = "u8".to_string();
+            self.apply_type_dialog.label.clear();
+        }
+
+        // Check if disasm view has a pending apply-type request
+        if let Some(addr) = self.disasm_view.take_pending_apply_type() {
+            self.apply_type_dialog.open = true;
+            self.apply_type_dialog.address = addr;
+            self.apply_type_dialog.selected_type = "u8".to_string();
+            self.apply_type_dialog.label.clear();
+        }
+
         self.handle_shortcuts(ctx);
         self.render_menu_bar(ctx);
         self.render_status_bar(ctx);
@@ -1471,9 +1518,42 @@ impl eframe::App for KilnApp {
         self.render_help_dialog(ctx);
         self.render_sidebar(ctx);
 
+        // Render type system dialogs (Sprint 11)
+        let all_type_names = self.project.all_type_names();
+        if let Some((name, def)) = crate::views::types_view::render_struct_editor(
+            ctx,
+            &mut self.struct_editor_dialog,
+            &all_type_names,
+        ) {
+            // If editing, remove the old name first
+            if let Some(old_name) = self.struct_editor_dialog.editing.take() {
+                if old_name != name {
+                    self.project.remove_type_def(&old_name);
+                }
+            }
+            self.project.add_type_def(name, def);
+        }
+        if let Some((name, def)) =
+            crate::views::types_view::render_enum_editor(ctx, &mut self.enum_editor_dialog)
+        {
+            if let Some(old_name) = self.enum_editor_dialog.editing.take() {
+                if old_name != name {
+                    self.project.remove_type_def(&old_name);
+                }
+            }
+            self.project.add_type_def(name, def);
+        }
+        if let Some((addr, applied)) = crate::views::types_view::render_apply_type_dialog(
+            ctx,
+            &mut self.apply_type_dialog,
+            &all_type_names,
+        ) {
+            self.project.apply_type_at(addr, applied);
+        }
+
         // Main central panel
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.image.is_none() {
+            if self.image.is_none() && self.active_tab != ActiveTab::Types {
                 ui.centered_and_justified(|ui| {
                     ui.heading("Open a binary file to get started\n(File → Open or Ctrl+O)");
                 });
@@ -1483,7 +1563,8 @@ impl eframe::App for KilnApp {
             match self.active_tab {
                 ActiveTab::Hex => {
                     if let Some(image) = &self.image {
-                        self.hex_view.render(ui, &image.data);
+                        self.hex_view
+                            .render(ui, &image.data, &self.project);
                     }
                 }
                 ActiveTab::Disassembly => {
@@ -1515,6 +1596,20 @@ impl eframe::App for KilnApp {
                         if let Some(addr) = self.exports_view.render(ui, &image) {
                             self.active_tab = ActiveTab::Disassembly;
                             self.navigate_to_address(addr);
+                        }
+                    }
+                }
+                ActiveTab::Types => {
+                    if let Some(types_action) = self.types_view.render(
+                        ui,
+                        &self.project,
+                        &mut self.struct_editor_dialog,
+                        &mut self.enum_editor_dialog,
+                    ) {
+                        match types_action {
+                            crate::views::types_view::TypesAction::DeleteType(name) => {
+                                self.project.remove_type_def(&name);
+                            }
                         }
                     }
                 }

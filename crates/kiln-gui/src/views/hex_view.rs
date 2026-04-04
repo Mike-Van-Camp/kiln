@@ -1,6 +1,7 @@
 //! Hex view panel: virtual-scrolling hex dump (addr | hex bytes | ASCII).
 
 use egui::{Color32, FontId, RichText, Ui};
+use kiln_project::{Project, TypeDef};
 
 /// Number of bytes displayed per row in the hex view.
 const BYTES_PER_ROW: usize = 16;
@@ -10,6 +11,8 @@ const COLOR_ADDRESS: Color32 = Color32::from_rgb(100, 149, 237);
 const COLOR_HEX: Color32 = Color32::LIGHT_GRAY;
 const COLOR_ASCII: Color32 = Color32::from_rgb(180, 180, 120);
 const COLOR_SELECTED_BG: Color32 = Color32::from_rgb(50, 60, 80);
+const COLOR_TYPE_OVERLAY: Color32 = Color32::from_rgb(180, 220, 140);
+const COLOR_FIELD_LABEL: Color32 = Color32::from_rgb(180, 180, 255);
 
 /// State for the hex view panel.
 #[derive(Default)]
@@ -20,12 +23,19 @@ pub struct HexView {
     pub selected_row: Option<usize>,
     /// Pending navigation request from context menu.
     pending_navigation: Option<u64>,
+    /// Pending apply-type request from context menu.
+    pending_apply_type: Option<u64>,
 }
 
 impl HexView {
     /// Take the pending navigation address (if any), clearing it.
     pub fn take_pending_navigation(&mut self) -> Option<u64> {
         self.pending_navigation.take()
+    }
+
+    /// Take the pending apply-type address (if any), clearing it.
+    pub fn take_pending_apply_type(&mut self) -> Option<u64> {
+        self.pending_apply_type.take()
     }
 
     /// Build the hex bytes string for a row.
@@ -61,8 +71,8 @@ impl HexView {
             .collect()
     }
 
-    /// Render the hex view for the given binary data.
-    pub fn render(&mut self, ui: &mut Ui, data: &[u8]) {
+    /// Render the hex view for the given binary data with optional type overlays.
+    pub fn render(&mut self, ui: &mut Ui, data: &[u8], project: &Project) {
         if data.is_empty() {
             ui.label("No data to display");
             return;
@@ -116,6 +126,13 @@ impl HexView {
                     let hex_str = Self::format_hex_bytes(row_data);
                     let ascii = Self::format_ascii(row_data);
                     let is_selected = self.selected_row == Some(row_offset);
+
+                    // Check for applied type overlays at this row's offset
+                    let applied_info = self.find_applied_type(
+                        row_offset as u64,
+                        BYTES_PER_ROW as u64,
+                        project,
+                    );
 
                     // Paint selection highlight behind the row
                     if is_selected {
@@ -177,8 +194,111 @@ impl HexView {
                             self.pending_navigation = Some(row_offset as u64);
                             ui.close_menu();
                         }
+                        if ui.button("Apply Type...").clicked() {
+                            self.pending_apply_type = Some(row_offset as u64);
+                            ui.close_menu();
+                        }
+                        // Show option to remove applied type if one exists
+                        if project.get_applied_type(row_offset as u64).is_some()
+                            && ui.button("Remove Applied Type").clicked()
+                        {
+                            self.pending_apply_type = None;
+                            ui.close_menu();
+                        }
                     });
+
+                    // Render type overlay below the row if applicable
+                    if let Some((overlay_label, fields)) = applied_info {
+                        ui.horizontal(|ui| {
+                            ui.add_space(20.0);
+                            ui.label(
+                                RichText::new(format!("  ── {} ──", overlay_label))
+                                    .font(mono_font.clone())
+                                    .color(COLOR_TYPE_OVERLAY)
+                                    .small(),
+                            );
+                        });
+                        for (fname, fval) in &fields {
+                            ui.horizontal(|ui| {
+                                ui.add_space(30.0);
+                                ui.label(
+                                    RichText::new(fname)
+                                        .font(mono_font.clone())
+                                        .color(COLOR_FIELD_LABEL)
+                                        .small(),
+                                );
+                                ui.label(
+                                    RichText::new(fval)
+                                        .font(mono_font.clone())
+                                        .color(COLOR_HEX)
+                                        .small(),
+                                );
+                            });
+                        }
+                    }
                 }
             });
+    }
+
+    /// Check if there's an applied type at the given offset and produce overlay info.
+    /// Returns `Some((label, vec of (field_name, formatted_value)))` if applicable.
+    fn find_applied_type(
+        &self,
+        row_offset: u64,
+        _row_size: u64,
+        project: &Project,
+    ) -> Option<(String, Vec<(String, String)>)> {
+        let applied = project.get_applied_type(row_offset)?;
+        let def = project.get_type_def(&applied.type_name)?;
+
+        let label = if let Some(ref lbl) = applied.label {
+            format!("{}: {}", lbl, applied.type_name)
+        } else {
+            applied.type_name.clone()
+        };
+
+        let mut fields = Vec::new();
+        match def {
+            TypeDef::Primitive(p) => {
+                fields.push((
+                    applied.type_name.clone(),
+                    format!("({} bytes)", p.size_bytes()),
+                ));
+            }
+            TypeDef::Struct(s) => {
+                let mut offset = 0usize;
+                for field in &s.fields {
+                    let fsize = project
+                        .get_type_def(&field.type_name)
+                        .and_then(|d| d.size_bytes(&project.type_definitions))
+                        .unwrap_or(0);
+                    fields.push((
+                        format!("  .{}: {}", field.name, field.type_name),
+                        format!("(+{:#x}, {} B)", offset, fsize),
+                    ));
+                    offset += fsize;
+                }
+            }
+            TypeDef::Enum(e) => {
+                for v in &e.variants {
+                    fields.push((format!("  {} = {}", v.name, v.value), String::new()));
+                }
+            }
+            TypeDef::Array {
+                element_type_name,
+                count,
+            } => {
+                let elem_size = project
+                    .get_type_def(element_type_name)
+                    .and_then(|d| d.size_bytes(&project.type_definitions))
+                    .unwrap_or(0);
+                fields.push((
+                    format!("  {}[{}]", element_type_name, count),
+                    format!("(total {} B)", elem_size * count),
+                ));
+            }
+        }
+
+        Some((label, fields))
     }
 }

@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use crate::views::collab_view::CollabView;
 use crate::views::console_view::ConsoleView;
+use crate::views::decompiler_view::DecompilerView;
 use crate::views::diff_view::DiffView;
 use crate::views::disasm_view::DisasmView;
 use crate::views::exports_view::ExportsView;
@@ -26,6 +27,7 @@ pub enum ActiveTab {
     Hex,
     Disassembly,
     Graph,
+    Decompiler,
     Strings,
     Imports,
     Exports,
@@ -231,6 +233,8 @@ pub struct KilnApp {
     pub diff_view: DiffView,
     /// Collaborative analysis view (Sprint 15).
     pub collab_view: CollabView,
+    /// Decompiler pseudo-code view (Sprint 17).
+    pub decompiler_view: DecompilerView,
 }
 
 impl Default for KilnApp {
@@ -268,6 +272,7 @@ impl Default for KilnApp {
             console_view: ConsoleView::default(),
             diff_view: DiffView::default(),
             collab_view: CollabView::default(),
+            decompiler_view: DecompilerView::default(),
         }
     }
 }
@@ -375,6 +380,23 @@ impl KilnApp {
                         .any(|b| addr >= b.start_addr && addr < b.end_addr)
                     {
                         self.graph_view.select_function(func.entry_addr);
+                        return;
+                    }
+                }
+            }
+            ActiveTab::Decompiler => {
+                // In decompiler view, decompile the function containing this address
+                for func in self.analysis.functions.values() {
+                    if func
+                        .blocks
+                        .iter()
+                        .any(|b| addr >= b.start_addr && addr < b.end_addr)
+                    {
+                        self.decompiler_view.select_function(
+                            func.entry_addr,
+                            &self.analysis,
+                            &self.debug_info,
+                        );
                         return;
                     }
                 }
@@ -594,6 +616,22 @@ impl KilnApp {
                         }
                     }
                 }
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Decompiler, "Decompiler")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Decompiler;
+                    // Auto-select first function if none selected
+                    if self.decompiler_view.selected_function_addr.is_none() {
+                        if let Some(&addr) = self.analysis.functions.keys().next() {
+                            self.decompiler_view.select_function(
+                                addr,
+                                &self.analysis,
+                                &self.debug_info,
+                            );
+                        }
+                    }
+                }
                 ui.separator();
                 if ui
                     .selectable_label(self.active_tab == ActiveTab::Strings, "Strings")
@@ -655,6 +693,7 @@ impl KilnApp {
                 ActiveTab::Hex => self.render_section_sidebar(ui),
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
                 ActiveTab::Graph => self.render_graph_function_sidebar(ui),
+                ActiveTab::Decompiler => self.render_function_sidebar(ui),
                 ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console | ActiveTab::Diff | ActiveTab::Collab => {
                     self.render_info_sidebar(ui);
                 }
@@ -1728,7 +1767,7 @@ impl eframe::App for KilnApp {
 
         // Main central panel
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console && self.active_tab != ActiveTab::Diff && self.active_tab != ActiveTab::Collab {
+            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console && self.active_tab != ActiveTab::Diff && self.active_tab != ActiveTab::Collab && self.active_tab != ActiveTab::Decompiler {
                 ui.centered_and_justified(|ui| {
                     ui.heading("Open a binary file to get started\n(File → Open or Ctrl+O)");
                 });
@@ -1749,6 +1788,15 @@ impl eframe::App for KilnApp {
                 }
                 ActiveTab::Graph => {
                     self.graph_view.render(ui, &self.analysis);
+                }
+                ActiveTab::Decompiler => {
+                    self.decompiler_view
+                        .render(ui, &self.analysis, &self.debug_info);
+                    // Handle pending navigation from decompiler
+                    if let Some(addr) = self.decompiler_view.pending_navigation.take() {
+                        self.active_tab = ActiveTab::Disassembly;
+                        self.navigate_to_address(addr);
+                    }
                 }
                 ActiveTab::Strings => {
                     if let Some(image) = self.image.clone() {

@@ -17,6 +17,23 @@
 
 ---
 
+## Post-MVP Sprint Status
+
+| Sprint | Description | Status |
+|--------|------------|--------|
+| Sprint 11 | Type System & Data Structures | ✅ Complete |
+| Sprint 12 | DWARF & PDB Debug Info | ✅ Complete |
+| Sprint 13 | Plugin / Scripting System | ✅ Complete |
+| Sprint 14 | Binary Diffing | ✅ Complete |
+| Sprint 15 | Collaborative Analysis | ✅ Complete |
+| Sprint 16 | CI/CD & Cross-Platform Releases | ✅ Complete |
+| Sprint 17 | Decompiler / Pseudo-Code View | ✅ Complete |
+| Sprint 18 | Debugger Integration | ✅ Complete |
+| Sprint 19 | Advanced Graph View | ✅ Complete |
+| Sprint 20 | Performance & Large Binary Support | ✅ Complete |
+
+---
+
 ## Sprint 3 — GUI Shell & Hex View (Completed)
 
 ### What was done
@@ -256,11 +273,259 @@ crates/kiln-gui/src/
 | Escape | Back / close dialog |
 | F1 | Help / shortcuts |
 
-### Codebase Stats
-- **16 source files** across 3 crates
-- **~5,400 lines** of Rust code
-- **37 passing tests**
-- **Zero clippy warnings**
+### Codebase Stats (Post-MVP)
+- **29 source files** across 3 crates
+- **~13,200 lines** of Rust code
+- **119 passing tests**
+- **Zero new clippy warnings**
 
-### Next Steps (Post-MVP)
-See PLAN.md "Excluded from MVP" section for the post-MVP backlog including decompiler, scripting, debugger integration, type system, DWARF/PDB parsing, diffing, and collaborative analysis.
+---
+
+## Sprint 11 — Type System & Data Structures (Completed)
+
+### What was done
+- **Primitive types**: u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, char, bool with size computation
+- **Struct editor**: Named structs with ordered fields, create/edit/delete via dialog
+- **Enum editor**: Named enums with integer-valued variants
+- **Array types**: Element type + count (e.g., `u8[256]`)
+- **Apply Type**: Right-click in hex/disasm views to apply type at address with optional label
+- **Struct overlay**: Hex view renders typed fields inline below hex rows
+- **Serialization**: Types and applied types stored in project files
+- **7 new tests**: Primitive sizes, struct/enum/array sizing, apply/remove type, serialization roundtrip
+
+### Files created/modified
+- `crates/kiln-project/src/lib.rs` — PrimitiveType, StructDef, EnumDef, TypeDef, AppliedType types and methods
+- `crates/kiln-gui/src/views/types_view.rs` — New: types list, struct/enum editors, apply-type dialog
+- `crates/kiln-gui/src/views/hex_view.rs` — Apply Type context menu, struct overlay
+- `crates/kiln-gui/src/views/disasm_view.rs` — Apply Type context menu
+- `crates/kiln-gui/src/app.rs` — Types tab, editor dialogs
+
+---
+
+## Sprint 12 — DWARF & PDB Debug Info (Completed)
+
+### What was done
+- **DWARF parsing**: gimli/object-based parser for ELF debug info
+- **Function signatures**: Extracts parameter names, types, return types from DW_TAG_subprogram
+- **Variable extraction**: Local variables and parameters with stack/register locations
+- **Source line mapping**: DW_TAG_line_program parsing for file:line annotations
+- **Debug info indicator**: Status bar shows debug format availability
+- **Function signatures in sidebar**: Rich signatures for debug-compiled binaries
+- **Source annotations**: file:line displayed above instructions in disasm view
+- **11 new tests**
+
+### Files created/modified
+- `crates/kiln-core/src/debug_info.rs` — New: DWARF parser, DebugInfo, DebugFunction, SourceLocation
+- `crates/kiln-core/src/lib.rs` — debug_info module export
+- `crates/kiln-gui/src/views/disasm_view.rs` — Debug info rendering
+- `crates/kiln-gui/src/app.rs` — Debug info field, status bar indicator
+
+---
+
+## Sprint 13 — Plugin / Scripting System (Completed)
+
+### What was done
+- **Rhai engine integration**: Full scripting engine with 1M operation limit
+- **Script API**: get_instruction, get_instructions_in_range, get_xrefs_to/from, get_functions, get_function, get_comment, get_label, set_comment, set_label, to_hex
+- **Console tab**: REPL with command history, colored output, script execution
+- **File → Run Script**: Execute .rhai script files
+- **Rhai print fix**: Uses engine.on_print()/on_debug() callbacks to avoid built-in print conflicts
+- **13 passing tests** (all scripting tests)
+
+### Files created/modified
+- `crates/kiln-gui/src/scripting.rs` — New: Rhai engine, script API
+- `crates/kiln-gui/src/views/console_view.rs` — New: Script console REPL
+- `crates/kiln-gui/src/app.rs` — Console tab, Run Script menu
+
+---
+
+## Sprint 14 — Binary Diffing (Completed)
+
+### What was done
+- **Diff engine**: Function matching by name with LCS-based instruction similarity scoring
+- **Instruction-level diff**: LCS algorithm detecting Same/Added/Removed/Modified changes
+- **Diff view**: Two-pane layout — function list with status icons, instruction diff display
+- **Color-coded**: Green=added, Red=removed, Yellow=modified, Gray=same
+- **Export report**: Copy diff summary to clipboard
+- **File → Open Diff**: Opens two file dialogs for binary comparison
+- **7 new tests**
+
+### Files created/modified
+- `crates/kiln-core/src/diff.rs` — New: diff engine with LCS algorithm
+- `crates/kiln-gui/src/views/diff_view.rs` — New: diff view
+- `crates/kiln-gui/src/app.rs` — Diff tab, Open Diff menu
+
+---
+
+## Sprint 15 — Collaborative Analysis (Completed)
+
+### What was done
+- **Author tracking**: Annotations store author name and unix timestamp
+- **Annotation history**: Full version history of all changes (set/remove comment/label)
+- **JSON export**: Export annotations as pretty-printed JSON (copies to clipboard)
+- **JSON import**: Import annotations from pasted JSON text
+- **Merge with conflict resolution**: Automatic merge for non-overlapping, manual resolution for conflicts
+- **Collab tab**: Author settings, import text area, conflict resolution UI, history viewer
+- **Backward compatible**: All new fields use `#[serde(default)]` for old project files
+- **5 new tests**: JSON roundtrip, merge (no conflicts), merge (with conflicts), author tracking, history recording
+
+### Files created/modified
+- `crates/kiln-project/src/lib.rs` — Author/timestamp fields, history, JSON export/import, merge logic
+- `crates/kiln-gui/src/views/collab_view.rs` — New: collaboration UI
+- `crates/kiln-gui/src/app.rs` — Collab tab
+
+---
+
+## Sprint 16 — CI/CD & Cross-Platform Releases (Completed)
+
+### What was done
+- **CI workflow** (`.github/workflows/ci.yml`):
+  - `cargo fmt --all --check` (Ubuntu)
+  - `cargo clippy --all-targets --workspace -- -D warnings` (Ubuntu)
+  - `cargo test --workspace` + `cargo build --release` on Linux, Windows, macOS
+- **Release workflow** (`.github/workflows/release.yml`):
+  - Tag-triggered (v*) builds for 4 targets: x86_64-linux, x86_64-windows, x86_64-macos, aarch64-macos
+  - Release artifact upload via softprops/action-gh-release
+  - Release notes extracted from CHANGELOG.md
+
+### Files created
+- `.github/workflows/ci.yml`
+- `.github/workflows/release.yml`
+
+---
+
+## Sprint 17 — Decompiler / Pseudo-Code View (Completed)
+
+### What was done
+- **IR representation**: IrExpr and IrStatement types for intermediate representation
+- **Pattern-matching decompiler**: Translates x86 instructions to C-like constructs:
+  - mov/xor/add/sub/inc/dec → assignments and arithmetic
+  - call → function calls
+  - ret → return statements
+  - cmp/test + jcc → if/else conditions
+  - Back-edge detection → while loops
+  - push/pop/nop → filtered (prologue/epilogue)
+  - Unrecognized → RawAsm fallback
+- **Pseudo-code generation**: C-like output with proper indentation
+- **Decompiler view**: Function selector, syntax-highlighted monospace display, click-to-navigate
+- **Copy to clipboard**: Copy pseudo-code button
+- **10 new tests**
+
+### Files created/modified
+- `crates/kiln-core/src/decompiler.rs` — New: decompiler, IR types, code generator
+- `crates/kiln-gui/src/views/decompiler_view.rs` — New: decompiler view
+- `crates/kiln-gui/src/app.rs` — Decompiler tab
+
+---
+
+## Sprint 18 — Debugger Integration (Completed)
+
+### What was done
+- **Debug session model**: DebuggerState (Disconnected/Running/Paused/Exited), Breakpoint, RegisterValue, StackFrame, MemoryWatch structures
+- **Breakpoint management**: Add/remove/toggle/clear with ID tracking
+- **Debugger view**: Full UI with:
+  - State indicator bar (color-coded)
+  - Toolbar: Connect, Continue, Step Over, Step Into, Stop buttons
+  - Collapsible panels: Breakpoints, Registers, Call Stack, Memory Watch
+  - Output log
+- **Note**: GDB/LLDB wire protocol to be added in future sprint
+- **8 new tests**
+
+### Files created/modified
+- `crates/kiln-core/src/debugger.rs` — New: debug session data model
+- `crates/kiln-gui/src/views/debugger_view.rs` — New: debugger UI
+- `crates/kiln-gui/src/app.rs` — Debugger tab
+
+---
+
+## Sprint 19 — Advanced Graph View (Completed)
+
+### What was done
+- **Sugiyama algorithm**: Longest-path layering with DFS back-edge detection + barycenter crossing minimization
+- **Edge routing**: Quadratic bezier curves with offset departure points for parallel edges
+- **Minimap**: Bottom-right overview panel showing graph extent and visible viewport
+- **Dominance tree view**: Cooper-Harvey-Kennedy algorithm for immediate dominator computation, toggle via toolbar
+- **Call graph view**: Function-level graph from Call xrefs with deduplication, toggle via toolbar
+- **SVG export**: Generates SVG string with nodes and edges, copies to clipboard
+- **13 new tests**
+
+### Files created/modified
+- `crates/kiln-core/src/graph.rs` — New: graph layout and dominance algorithms
+- `crates/kiln-gui/src/views/graph_view.rs` — Enhanced with all advanced features
+
+---
+
+## Sprint 20 — Performance & Large Binary Support (Completed)
+
+### What was done
+- **LRU instruction cache**: HashMap + VecDeque bounded cache with LRU eviction, configurable max entries
+- **Progress tracker**: Thread-safe progress reporting with Arc<AtomicU64>, cancellation support
+- **Section range queries**: Efficient lookup of sections overlapping an address range
+- **Progress bar**: Rendered in status bar when long-running operations are active
+- **8 new tests**
+
+### Files created/modified
+- `crates/kiln-core/src/perf.rs` — New: InstructionCache, ProgressTracker, sections_in_range
+- `crates/kiln-gui/src/app.rs` — Progress field and status bar rendering
+
+---
+
+## All Sprints Complete — Final Architecture
+
+### GUI Module Structure
+```
+crates/kiln-gui/src/
+├── main.rs               # eframe entry point
+├── app.rs                # KilnApp struct, all app state & rendering
+├── scripting.rs          # Rhai scripting engine
+└── views/
+    ├── mod.rs            # Module declarations
+    ├── hex_view.rs       # Hex dump view
+    ├── disasm_view.rs    # Disassembly listing view
+    ├── graph_view.rs     # Control flow graph view (advanced)
+    ├── decompiler_view.rs # Pseudo-code decompiler view
+    ├── strings_view.rs   # Extracted strings view
+    ├── imports_view.rs   # Imports table view
+    ├── exports_view.rs   # Exports table view
+    ├── types_view.rs     # Type editor view
+    ├── console_view.rs   # Script console view
+    ├── diff_view.rs      # Binary diff view
+    ├── collab_view.rs    # Collaborative analysis view
+    └── debugger_view.rs  # Debugger integration view
+```
+
+### Core Module Structure
+```
+crates/kiln-core/src/
+├── lib.rs          # Module declarations and re-exports
+├── loader.rs       # Binary loading (goblin)
+├── disasm.rs       # Disassembly (capstone)
+├── model.rs        # Core data types
+├── analysis.rs     # CFG analysis, functions, xrefs
+├── debug_info.rs   # DWARF/PDB parsing (gimli/object)
+├── diff.rs         # Binary diffing engine
+├── decompiler.rs   # Pseudo-code decompiler
+├── debugger.rs     # Debug session model
+├── graph.rs        # Graph layout algorithms
+└── perf.rs         # Performance infrastructure
+```
+
+### All Tabs
+1. **Hex View** — Raw hex dump with struct overlay
+2. **Disassembly** — Instruction listing with xrefs, comments, labels, debug info
+3. **Graph** — CFG with Sugiyama layout, minimap, dominance tree, call graph
+4. **Decompiler** — C-like pseudo-code
+5. **Strings** — Extracted printable strings
+6. **Imports** — Imported symbols
+7. **Exports** — Exported symbols
+8. **Types** — Type editor with struct/enum definitions
+9. **Console** — Rhai scripting REPL
+10. **Diff** — Binary comparison
+11. **Collab** — Collaborative analysis
+12. **Debugger** — Debug session with breakpoints, registers, call stack
+
+### Final Codebase Stats
+- **29 source files** across 3 crates
+- **~13,200 lines** of Rust code
+- **119 passing tests**
+- **Zero new clippy warnings**

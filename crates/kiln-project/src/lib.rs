@@ -21,6 +21,45 @@ pub enum ProjectError {
 pub struct Annotation {
     pub comment: Option<String>,
     pub label: Option<String>,
+    /// Who made this annotation (Sprint 15).
+    #[serde(default)]
+    pub author: Option<String>,
+    /// Unix timestamp when this annotation was last modified (Sprint 15).
+    #[serde(default)]
+    pub timestamp: Option<u64>,
+}
+
+/// A change recorded in the project history (Sprint 15).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AnnotationChange {
+    SetComment(String),
+    RemoveComment,
+    SetLabel(String),
+    RemoveLabel,
+}
+
+/// A single history entry recording an annotation change (Sprint 15).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnnotationHistoryEntry {
+    pub address: u64,
+    pub author: String,
+    pub timestamp: u64,
+    pub change: AnnotationChange,
+}
+
+/// A conflict between local and remote annotations during merge (Sprint 15).
+#[derive(Debug, Clone)]
+pub struct MergeConflict {
+    pub address: u64,
+    pub local: Annotation,
+    pub remote: Annotation,
+}
+
+/// Resolution strategy for a merge conflict (Sprint 15).
+#[derive(Debug, Clone, Copy)]
+pub enum MergeResolution {
+    KeepLocal,
+    KeepRemote,
 }
 
 /// Project metadata.
@@ -197,6 +236,12 @@ pub struct Project {
     /// Types applied at specific addresses (address → applied type).
     #[serde(default)]
     pub applied_types: BTreeMap<u64, AppliedType>,
+    /// Current author name for annotations (Sprint 15).
+    #[serde(default)]
+    pub author: String,
+    /// History of annotation changes (Sprint 15).
+    #[serde(default)]
+    pub history: Vec<AnnotationHistoryEntry>,
 }
 
 impl Project {
@@ -221,31 +266,65 @@ impl Project {
             annotations: BTreeMap::new(),
             type_definitions,
             applied_types: BTreeMap::new(),
+            author: String::new(),
+            history: Vec::new(),
         }
     }
 
     /// Add or update a comment at an address.
     pub fn set_comment(&mut self, addr: u64, comment: String) {
+        let ts = current_timestamp();
+        let author = self.author.clone();
         let entry = self.annotations.entry(addr).or_insert_with(|| Annotation {
             comment: None,
             label: None,
+            author: None,
+            timestamp: None,
         });
-        entry.comment = Some(comment);
+        entry.comment = Some(comment.clone());
+        entry.author = Some(author.clone());
+        entry.timestamp = Some(ts);
+        self.history.push(AnnotationHistoryEntry {
+            address: addr,
+            author,
+            timestamp: ts,
+            change: AnnotationChange::SetComment(comment),
+        });
     }
 
     /// Add or update a label (rename) at an address.
     pub fn set_label(&mut self, addr: u64, label: String) {
+        let ts = current_timestamp();
+        let author = self.author.clone();
         let entry = self.annotations.entry(addr).or_insert_with(|| Annotation {
             comment: None,
             label: None,
+            author: None,
+            timestamp: None,
         });
-        entry.label = Some(label);
+        entry.label = Some(label.clone());
+        entry.author = Some(author.clone());
+        entry.timestamp = Some(ts);
+        self.history.push(AnnotationHistoryEntry {
+            address: addr,
+            author,
+            timestamp: ts,
+            change: AnnotationChange::SetLabel(label),
+        });
     }
 
     /// Remove the comment at an address.
     pub fn remove_comment(&mut self, addr: u64) {
         if let Some(entry) = self.annotations.get_mut(&addr) {
             entry.comment = None;
+            let ts = current_timestamp();
+            let author = self.author.clone();
+            self.history.push(AnnotationHistoryEntry {
+                address: addr,
+                author,
+                timestamp: ts,
+                change: AnnotationChange::RemoveComment,
+            });
             if entry.label.is_none() {
                 self.annotations.remove(&addr);
             }
@@ -256,6 +335,14 @@ impl Project {
     pub fn remove_label(&mut self, addr: u64) {
         if let Some(entry) = self.annotations.get_mut(&addr) {
             entry.label = None;
+            let ts = current_timestamp();
+            let author = self.author.clone();
+            self.history.push(AnnotationHistoryEntry {
+                address: addr,
+                author,
+                timestamp: ts,
+                change: AnnotationChange::RemoveLabel,
+            });
             if entry.comment.is_none() {
                 self.annotations.remove(&addr);
             }
@@ -325,6 +412,62 @@ impl Project {
         names
     }
 
+    // -- Collaborative analysis methods (Sprint 15) --
+
+    /// Export annotations as a JSON string.
+    pub fn export_annotations_json(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(&self.annotations)
+            .map_err(|e| format!("JSON export error: {e}"))
+    }
+
+    /// Import annotations from a JSON string.
+    pub fn import_annotations_json(json: &str) -> Result<BTreeMap<u64, Annotation>, String> {
+        serde_json::from_str(json).map_err(|e| format!("JSON import error: {e}"))
+    }
+
+    /// Merge remote annotations into local, returning merged result and conflicts.
+    /// Non-conflicting annotations are merged automatically.
+    /// Conflicting ones (both local and remote have annotations at the same address) are returned.
+    pub fn merge_annotations(
+        local: &BTreeMap<u64, Annotation>,
+        remote: &BTreeMap<u64, Annotation>,
+    ) -> (BTreeMap<u64, Annotation>, Vec<MergeConflict>) {
+        let mut merged = local.clone();
+        let mut conflicts = Vec::new();
+
+        for (addr, remote_ann) in remote {
+            if let Some(local_ann) = local.get(addr) {
+                // Both have annotations at this address — conflict
+                conflicts.push(MergeConflict {
+                    address: *addr,
+                    local: local_ann.clone(),
+                    remote: remote_ann.clone(),
+                });
+            } else {
+                // Only remote has it — auto-merge
+                merged.insert(*addr, remote_ann.clone());
+            }
+        }
+
+        (merged, conflicts)
+    }
+
+    /// Apply a resolution to a merge conflict.
+    pub fn resolve_conflict(
+        merged: &mut BTreeMap<u64, Annotation>,
+        conflict: &MergeConflict,
+        resolution: MergeResolution,
+    ) {
+        match resolution {
+            MergeResolution::KeepLocal => {
+                merged.insert(conflict.address, conflict.local.clone());
+            }
+            MergeResolution::KeepRemote => {
+                merged.insert(conflict.address, conflict.remote.clone());
+            }
+        }
+    }
+
     /// Save project to a file.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), ProjectError> {
         let data = bincode::serialize(self)?;
@@ -342,6 +485,13 @@ impl Project {
 
 fn chrono_placeholder() -> String {
     "2025-01-01T00:00:00Z".to_string()
+}
+
+fn current_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -548,5 +698,90 @@ mod tests {
         assert!(names.contains(&"Foo".to_string()));
         // Primitives should NOT appear
         assert!(!names.contains(&"u8".to_string()));
+    }
+
+    #[test]
+    fn test_json_export_import_roundtrip() {
+        let mut project = Project::new("/bin/ls".to_string());
+        project.set_comment(0x1000, "hello".to_string());
+        project.set_label(0x2000, "my_func".to_string());
+
+        let json = project.export_annotations_json().unwrap();
+        let imported = Project::import_annotations_json(&json).unwrap();
+
+        assert_eq!(imported.get(&0x1000).unwrap().comment.as_deref(), Some("hello"));
+        assert_eq!(imported.get(&0x2000).unwrap().label.as_deref(), Some("my_func"));
+    }
+
+    #[test]
+    fn test_merge_no_conflicts() {
+        let mut local = BTreeMap::new();
+        local.insert(0x1000, Annotation {
+            comment: Some("local only".into()),
+            label: None,
+            author: None,
+            timestamp: None,
+        });
+        let mut remote = BTreeMap::new();
+        remote.insert(0x2000, Annotation {
+            comment: Some("remote only".into()),
+            label: None,
+            author: None,
+            timestamp: None,
+        });
+
+        let (merged, conflicts) = Project::merge_annotations(&local, &remote);
+        assert!(conflicts.is_empty());
+        assert_eq!(merged.len(), 2);
+        assert!(merged.contains_key(&0x1000));
+        assert!(merged.contains_key(&0x2000));
+    }
+
+    #[test]
+    fn test_merge_with_conflicts() {
+        let mut local = BTreeMap::new();
+        local.insert(0x1000, Annotation {
+            comment: Some("local comment".into()),
+            label: None,
+            author: None,
+            timestamp: None,
+        });
+        let mut remote = BTreeMap::new();
+        remote.insert(0x1000, Annotation {
+            comment: Some("remote comment".into()),
+            label: None,
+            author: None,
+            timestamp: None,
+        });
+
+        let (_, conflicts) = Project::merge_annotations(&local, &remote);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].address, 0x1000);
+    }
+
+    #[test]
+    fn test_author_tracking() {
+        let mut project = Project::new("/bin/ls".to_string());
+        project.author = "alice".to_string();
+        project.set_comment(0x1000, "test".to_string());
+
+        let ann = project.annotations.get(&0x1000).unwrap();
+        assert_eq!(ann.author.as_deref(), Some("alice"));
+        assert!(ann.timestamp.is_some());
+    }
+
+    #[test]
+    fn test_history_recording() {
+        let mut project = Project::new("/bin/ls".to_string());
+        project.author = "bob".to_string();
+        project.set_comment(0x1000, "first".to_string());
+        project.set_label(0x2000, "func".to_string());
+        project.remove_comment(0x1000);
+
+        assert_eq!(project.history.len(), 3);
+        assert!(matches!(project.history[0].change, AnnotationChange::SetComment(_)));
+        assert!(matches!(project.history[1].change, AnnotationChange::SetLabel(_)));
+        assert!(matches!(project.history[2].change, AnnotationChange::RemoveComment));
+        assert_eq!(project.history[0].author, "bob");
     }
 }

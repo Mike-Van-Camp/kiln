@@ -1432,6 +1432,12 @@ impl eframe::App for KilnApp {
             ctx.set_visuals(egui::Visuals::light());
         }
 
+        // Check if hex view has a pending navigation request
+        if let Some(addr) = self.hex_view.take_pending_navigation() {
+            self.active_tab = ActiveTab::Disassembly;
+            self.navigate_to_address(addr);
+        }
+
         // Check if disasm view has a pending navigation request
         let pending_nav = self.disasm_view.take_pending_navigation();
         if let Some(addr) = pending_nav {

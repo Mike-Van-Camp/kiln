@@ -63,6 +63,23 @@ impl ExportsView {
                     if response.clicked() {
                         navigate_to = Some(sym.address);
                     }
+                    let addr = sym.address;
+                    let name = sym.name.clone();
+                    response.context_menu(|ui| {
+                        if ui.button("Copy Address").clicked() {
+                            ui.ctx().copy_text(format!("0x{:08X}", addr));
+                            ui.close_menu();
+                        }
+                        if ui.button("Copy Name").clicked() {
+                            ui.ctx().copy_text(name.clone());
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Go to Disassembly").clicked() {
+                            navigate_to = Some(addr);
+                            ui.close_menu();
+                        }
+                    });
                 }
             });
 

@@ -10,6 +10,8 @@ goblin = "0.9"
 capstone = "0.12"
 log = "0.4"
 thiserror = "2"
+gimli = "0.31"
+object = "0.36"
 
 [dev-dependencies]
 env_logger = "0.11"

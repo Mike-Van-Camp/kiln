@@ -1,4 +1,5 @@
 mod app;
+mod scripting;
 mod views;
 
 use app::KilnApp;

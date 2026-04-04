@@ -181,7 +181,28 @@ impl StringsView {
                     if response.clicked() {
                         navigate_to = Some(s.virtual_address);
                     }
-                    response.on_hover_text(&s.content);
+                    let va = s.virtual_address;
+                    let offset = s.file_offset;
+                    let content_clone = s.content.clone();
+                    response.on_hover_text(&s.content).context_menu(|ui| {
+                        if ui.button("Copy Address").clicked() {
+                            ui.ctx().copy_text(format!("0x{:08X}", va));
+                            ui.close_menu();
+                        }
+                        if ui.button("Copy String").clicked() {
+                            ui.ctx().copy_text(content_clone.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("Copy Offset").clicked() {
+                            ui.ctx().copy_text(format!("0x{:08X}", offset));
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Go to Disassembly").clicked() {
+                            navigate_to = Some(va);
+                            ui.close_menu();
+                        }
+                    });
                 }
             });
 

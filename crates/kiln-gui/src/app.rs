@@ -7,6 +7,7 @@ use kiln_core::disasm::disassemble_executable_sections;
 use kiln_core::model::BinaryImage;
 use std::path::PathBuf;
 
+use crate::views::collab_view::CollabView;
 use crate::views::console_view::ConsoleView;
 use crate::views::diff_view::DiffView;
 use crate::views::disasm_view::DisasmView;
@@ -31,6 +32,7 @@ pub enum ActiveTab {
     Types,
     Console,
     Diff,
+    Collab,
 }
 
 /// State for the Go-to-Address dialog.
@@ -227,6 +229,8 @@ pub struct KilnApp {
     pub console_view: ConsoleView,
     /// Binary diff view (Sprint 14).
     pub diff_view: DiffView,
+    /// Collaborative analysis view (Sprint 15).
+    pub collab_view: CollabView,
 }
 
 impl Default for KilnApp {
@@ -263,6 +267,7 @@ impl Default for KilnApp {
             debug_info: DebugInfo::default(),
             console_view: ConsoleView::default(),
             diff_view: DiffView::default(),
+            collab_view: CollabView::default(),
         }
     }
 }
@@ -384,6 +389,10 @@ impl KilnApp {
                 self.disasm_view.scroll_to_address = Some(addr);
             }
             ActiveTab::Diff => {
+                self.active_tab = ActiveTab::Disassembly;
+                self.disasm_view.scroll_to_address = Some(addr);
+            }
+            ActiveTab::Collab => {
                 self.active_tab = ActiveTab::Disassembly;
                 self.disasm_view.scroll_to_address = Some(addr);
             }
@@ -623,6 +632,12 @@ impl KilnApp {
                 {
                     self.active_tab = ActiveTab::Diff;
                 }
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Collab, "Collab")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Collab;
+                }
             });
         });
     }
@@ -640,7 +655,7 @@ impl KilnApp {
                 ActiveTab::Hex => self.render_section_sidebar(ui),
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
                 ActiveTab::Graph => self.render_graph_function_sidebar(ui),
-                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console | ActiveTab::Diff => {
+                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console | ActiveTab::Diff | ActiveTab::Collab => {
                     self.render_info_sidebar(ui);
                 }
             });
@@ -1713,7 +1728,7 @@ impl eframe::App for KilnApp {
 
         // Main central panel
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console && self.active_tab != ActiveTab::Diff {
+            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console && self.active_tab != ActiveTab::Diff && self.active_tab != ActiveTab::Collab {
                 ui.centered_and_justified(|ui| {
                     ui.heading("Open a binary file to get started\n(File → Open or Ctrl+O)");
                 });
@@ -1778,6 +1793,9 @@ impl eframe::App for KilnApp {
                 }
                 ActiveTab::Diff => {
                     self.diff_view.render(ui);
+                }
+                ActiveTab::Collab => {
+                    self.collab_view.render(ui, &mut self.project);
                 }
             }
         });

@@ -1,8 +1,10 @@
 pub mod analysis;
+pub mod debug_info;
 pub mod disasm;
 pub mod loader;
 pub mod model;
 
+pub use debug_info::{DebugInfo, parse_debug_info};
 pub use loader::load_binary;
 pub use model::{
     Architecture, BinaryFormat, BinaryImage, Section, SectionKind, Symbol, SymbolKind,

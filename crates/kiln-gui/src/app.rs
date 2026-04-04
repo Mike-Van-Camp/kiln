@@ -2,6 +2,7 @@
 
 use eframe::egui;
 use kiln_core::analysis::AnalysisDatabase;
+use kiln_core::debug_info::DebugInfo;
 use kiln_core::disasm::disassemble_executable_sections;
 use kiln_core::model::BinaryImage;
 use std::path::PathBuf;
@@ -216,6 +217,8 @@ pub struct KilnApp {
     pub enum_editor_dialog: EnumEditorDialog,
     /// Apply-type dialog (Sprint 11).
     pub apply_type_dialog: ApplyTypeDialog,
+    /// Parsed debug info from DWARF/PDB sections (Sprint 12).
+    pub debug_info: DebugInfo,
 }
 
 impl Default for KilnApp {
@@ -249,6 +252,7 @@ impl Default for KilnApp {
             struct_editor_dialog: StructEditorDialog::default(),
             enum_editor_dialog: EnumEditorDialog::default(),
             apply_type_dialog: ApplyTypeDialog::default(),
+            debug_info: DebugInfo::default(),
         }
     }
 }
@@ -298,6 +302,9 @@ impl KilnApp {
                 if let Some(section) = image.sections.first() {
                     self.hex_view.offset = section.file_offset as usize;
                 }
+
+                // Parse debug info from DWARF/PDB sections (Sprint 12)
+                self.debug_info = kiln_core::debug_info::parse_debug_info(&image);
 
                 self.selected_section = None;
                 self.selected_symbol = None;
@@ -494,6 +501,21 @@ impl KilnApp {
                     }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Debug info indicator (Sprint 12)
+                    if self.debug_info.has_debug_info {
+                        let fmt = self.debug_info.debug_format.as_deref().unwrap_or("Debug");
+                        ui.label(
+                            egui::RichText::new(format!("🐛 {}", fmt))
+                                .color(egui::Color32::from_rgb(100, 200, 100)),
+                        );
+                        ui.separator();
+                    } else if self.image.is_some() {
+                        ui.label(
+                            egui::RichText::new("No debug info")
+                                .color(egui::Color32::GRAY),
+                        );
+                        ui.separator();
+                    }
                     let func_count = self.analysis.functions.len();
                     let xref_count = self.analysis.xrefs.len();
                     let annotation_count = self.project.annotations.len();
@@ -635,19 +657,30 @@ impl KilnApp {
         ui.separator();
 
         if func_count > 0 {
-            // Show detected functions from analysis (sorted by address via BTreeMap)
-            let funcs: Vec<(String, u64)> = self
+            // Collect function info; prefer debug signatures when available
+            let funcs: Vec<(String, Option<String>, u64)> = self
                 .analysis
                 .functions
                 .values()
-                .map(|f| (f.name.clone(), f.entry_addr))
+                .map(|f| {
+                    let sig = self.debug_info.signature_at(f.entry_addr).map(String::from);
+                    (f.name.clone(), sig, f.entry_addr)
+                })
                 .collect();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                for (i, (name, addr)) in funcs.iter().enumerate() {
-                    let label = format!("0x{:08x}  {}", addr, name);
+                for (i, (name, sig, addr)) in funcs.iter().enumerate() {
+                    let label = if let Some(s) = sig {
+                        format!("0x{:08x}  {}", addr, s)
+                    } else {
+                        format!("0x{:08x}  {}", addr, name)
+                    };
                     let selected = self.selected_symbol == Some(i);
-                    if ui.selectable_label(selected, &label).clicked() {
+                    let response = ui.selectable_label(selected, &label);
+                    if let Some(s) = sig {
+                        response.clone().on_hover_text(s);
+                    }
+                    if response.clicked() {
                         self.selected_symbol = Some(i);
                         self.disasm_view.scroll_to_address = Some(*addr);
                         self.nav_history.push(*addr);
@@ -839,6 +872,9 @@ impl KilnApp {
                 if let Some(section) = image.sections.first() {
                     self.hex_view.offset = section.file_offset as usize;
                 }
+
+                // Parse debug info (Sprint 12)
+                self.debug_info = kiln_core::debug_info::parse_debug_info(&image);
 
                 self.selected_section = None;
                 self.selected_symbol = None;
@@ -1570,7 +1606,7 @@ impl eframe::App for KilnApp {
                 ActiveTab::Disassembly => {
                     let image_ref = self.image.as_ref();
                     self.disasm_view
-                        .render(ui, &self.analysis, image_ref, &self.project);
+                        .render(ui, &self.analysis, image_ref, &self.project, &self.debug_info);
                 }
                 ActiveTab::Graph => {
                     self.graph_view.render(ui, &self.analysis);

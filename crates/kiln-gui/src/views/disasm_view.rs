@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use egui::{Color32, FontId, RichText, Ui};
 use kiln_core::analysis::AnalysisDatabase;
+use kiln_core::debug_info::DebugInfo;
 use kiln_core::model::{BinaryImage, Instruction, XrefType};
 
 /// State for the disassembly view panel.
@@ -53,6 +54,7 @@ impl SyntaxColors {
     const XREF: Color32 = Color32::from_rgb(120, 180, 255); // Light blue for xrefs
     const CLICKABLE_ADDR: Color32 = Color32::from_rgb(100, 200, 255); // Cyan for clickable addresses
     const COMMENT: Color32 = Color32::from_rgb(100, 200, 100); // Green for comments
+    const DEBUG_INFO: Color32 = Color32::from_rgb(140, 140, 140); // Gray for debug source info
 }
 
 /// Classify a mnemonic for syntax coloring.
@@ -440,6 +442,7 @@ impl DisasmView {
         analysis: &AnalysisDatabase,
         image: Option<&BinaryImage>,
         project: &kiln_project::Project,
+        debug_info: &DebugInfo,
     ) {
         let mono_font = FontId::monospace(13.0);
 
@@ -500,7 +503,7 @@ impl DisasmView {
                 }
                 let addr = addresses[row_idx];
                 if let Some(insn) = analysis.get_instruction(addr) {
-                    self.render_instruction_row(ui, insn, &mono_font, analysis, project);
+                    self.render_instruction_row(ui, insn, &mono_font, analysis, project, debug_info);
                 }
             }
         });
@@ -514,7 +517,37 @@ impl DisasmView {
         font: &FontId,
         analysis: &AnalysisDatabase,
         project: &kiln_project::Project,
+        debug_info: &DebugInfo,
     ) {
+        // Show debug function signature at entry point (Sprint 12)
+        if let Some(debug_fn) = debug_info.function_at(insn.address) {
+            if let Some(ref sig) = debug_fn.signature {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("; {}", sig))
+                            .font(font.clone())
+                            .color(SyntaxColors::DEBUG_INFO),
+                    );
+                });
+            }
+        }
+
+        // Show source file:line above instruction when available (Sprint 12)
+        if let Some(loc) = debug_info.source_location_at(insn.address) {
+            let loc_str = if let Some(col) = loc.column {
+                format!("; {}:{}:{}", loc.file, loc.line, col)
+            } else {
+                format!("; {}:{}", loc.file, loc.line)
+            };
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(&loc_str)
+                        .font(font.clone())
+                        .color(SyntaxColors::DEBUG_INFO),
+                );
+            });
+        }
+
         // Check for symbol label at this address (O(1) lookup)
         if let Some(name) = self.cached_symbols.get(&insn.address) {
             ui.horizontal(|ui| {

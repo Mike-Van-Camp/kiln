@@ -1,5 +1,6 @@
 pub mod analysis;
 pub mod debug_info;
+pub mod debugger;
 pub mod decompiler;
 pub mod diff;
 pub mod disasm;

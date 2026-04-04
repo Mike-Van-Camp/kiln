@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use crate::views::collab_view::CollabView;
 use crate::views::console_view::ConsoleView;
+use crate::views::debugger_view::DebuggerView;
 use crate::views::decompiler_view::DecompilerView;
 use crate::views::diff_view::DiffView;
 use crate::views::disasm_view::DisasmView;
@@ -28,6 +29,7 @@ pub enum ActiveTab {
     Disassembly,
     Graph,
     Decompiler,
+    Debugger,
     Strings,
     Imports,
     Exports,
@@ -235,6 +237,8 @@ pub struct KilnApp {
     pub collab_view: CollabView,
     /// Decompiler pseudo-code view (Sprint 17).
     pub decompiler_view: DecompilerView,
+    /// Debugger view (Sprint 18).
+    pub debugger_view: DebuggerView,
 }
 
 impl Default for KilnApp {
@@ -273,6 +277,7 @@ impl Default for KilnApp {
             diff_view: DiffView::default(),
             collab_view: CollabView::default(),
             decompiler_view: DecompilerView::default(),
+            debugger_view: DebuggerView::default(),
         }
     }
 }
@@ -415,6 +420,10 @@ impl KilnApp {
                 self.disasm_view.scroll_to_address = Some(addr);
             }
             ActiveTab::Collab => {
+                self.active_tab = ActiveTab::Disassembly;
+                self.disasm_view.scroll_to_address = Some(addr);
+            }
+            ActiveTab::Debugger => {
                 self.active_tab = ActiveTab::Disassembly;
                 self.disasm_view.scroll_to_address = Some(addr);
             }
@@ -676,6 +685,12 @@ impl KilnApp {
                 {
                     self.active_tab = ActiveTab::Collab;
                 }
+                if ui
+                    .selectable_label(self.active_tab == ActiveTab::Debugger, "Debugger")
+                    .clicked()
+                {
+                    self.active_tab = ActiveTab::Debugger;
+                }
             });
         });
     }
@@ -694,7 +709,7 @@ impl KilnApp {
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
                 ActiveTab::Graph => self.render_graph_function_sidebar(ui),
                 ActiveTab::Decompiler => self.render_function_sidebar(ui),
-                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console | ActiveTab::Diff | ActiveTab::Collab => {
+                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console | ActiveTab::Diff | ActiveTab::Collab | ActiveTab::Debugger => {
                     self.render_info_sidebar(ui);
                 }
             });
@@ -1767,7 +1782,7 @@ impl eframe::App for KilnApp {
 
         // Main central panel
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console && self.active_tab != ActiveTab::Diff && self.active_tab != ActiveTab::Collab && self.active_tab != ActiveTab::Decompiler {
+            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console && self.active_tab != ActiveTab::Diff && self.active_tab != ActiveTab::Collab && self.active_tab != ActiveTab::Decompiler && self.active_tab != ActiveTab::Debugger {
                 ui.centered_and_justified(|ui| {
                     ui.heading("Open a binary file to get started\n(File → Open or Ctrl+O)");
                 });
@@ -1844,6 +1859,14 @@ impl eframe::App for KilnApp {
                 }
                 ActiveTab::Collab => {
                     self.collab_view.render(ui, &mut self.project);
+                }
+                ActiveTab::Debugger => {
+                    self.debugger_view.render(ui);
+                    // Handle pending navigation from debugger view
+                    if let Some(addr) = self.debugger_view.pending_navigation.take() {
+                        self.active_tab = ActiveTab::Disassembly;
+                        self.navigate_to_address(addr);
+                    }
                 }
             }
         });

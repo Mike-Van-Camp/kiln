@@ -2,6 +2,7 @@
 
 pub mod collab_view;
 pub mod console_view;
+pub mod debugger_view;
 pub mod decompiler_view;
 pub mod diff_view;
 pub mod disasm_view;

@@ -241,6 +241,8 @@ pub struct KilnApp {
     pub debugger_view: DebuggerView,
     /// Progress tracker for long-running operations (Sprint 20).
     pub progress: Option<kiln_core::perf::ProgressTracker>,
+    /// Filter text for the function sidebar.
+    pub function_filter: String,
 }
 
 impl Default for KilnApp {
@@ -281,6 +283,7 @@ impl Default for KilnApp {
             decompiler_view: DecompilerView::default(),
             debugger_view: DebuggerView::default(),
             progress: None,
+            function_filter: String::new(),
         }
     }
 }
@@ -774,6 +777,14 @@ impl KilnApp {
         ui.heading(format!("Functions ({})", func_count));
         ui.separator();
 
+        ui.horizontal(|ui| {
+            ui.label("🔍");
+            ui.text_edit_singleline(&mut self.function_filter);
+        });
+        ui.separator();
+
+        let filter = self.function_filter.to_lowercase();
+
         if func_count > 0 {
             // Collect function info; prefer debug signatures when available
             let funcs: Vec<(String, Option<String>, u64)> = self
@@ -783,6 +794,9 @@ impl KilnApp {
                 .map(|f| {
                     let sig = self.debug_info.signature_at(f.entry_addr).map(String::from);
                     (f.name.clone(), sig, f.entry_addr)
+                })
+                .filter(|(name, _, _)| {
+                    filter.is_empty() || name.to_lowercase().contains(&filter)
                 })
                 .collect();
 
@@ -811,6 +825,9 @@ impl KilnApp {
                 .function_symbols()
                 .iter()
                 .map(|s| (s.name.clone(), s.address))
+                .filter(|(name, _)| {
+                    filter.is_empty() || name.to_lowercase().contains(&filter)
+                })
                 .collect();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -835,12 +852,23 @@ impl KilnApp {
         ui.heading(format!("Functions ({})", func_count));
         ui.separator();
 
+        ui.horizontal(|ui| {
+            ui.label("🔍");
+            ui.text_edit_singleline(&mut self.function_filter);
+        });
+        ui.separator();
+
+        let filter = self.function_filter.to_lowercase();
+
         if func_count > 0 {
             let funcs: Vec<(String, u64)> = self
                 .analysis
                 .functions
                 .values()
                 .map(|f| (f.name.clone(), f.entry_addr))
+                .filter(|(name, _)| {
+                    filter.is_empty() || name.to_lowercase().contains(&filter)
+                })
                 .collect();
 
             egui::ScrollArea::vertical().show(ui, |ui| {

@@ -654,26 +654,42 @@ impl KilnApp {
                     }
                 }
                 ui.separator();
+                let strings_label = if self.image.is_some() {
+                    format!("Strings ({})", self.strings_view.string_count())
+                } else {
+                    "Strings".to_string()
+                };
                 if ui
-                    .selectable_label(self.active_tab == ActiveTab::Strings, "Strings")
+                    .selectable_label(self.active_tab == ActiveTab::Strings, strings_label)
                     .clicked()
                 {
                     self.active_tab = ActiveTab::Strings;
                 }
+                let imports_label = if let Some(image) = &self.image {
+                    format!("Imports ({})", image.imports().len())
+                } else {
+                    "Imports".to_string()
+                };
                 if ui
-                    .selectable_label(self.active_tab == ActiveTab::Imports, "Imports")
+                    .selectable_label(self.active_tab == ActiveTab::Imports, imports_label)
                     .clicked()
                 {
                     self.active_tab = ActiveTab::Imports;
                 }
+                let exports_label = if let Some(image) = &self.image {
+                    format!("Exports ({})", image.exports().len())
+                } else {
+                    "Exports".to_string()
+                };
                 if ui
-                    .selectable_label(self.active_tab == ActiveTab::Exports, "Exports")
+                    .selectable_label(self.active_tab == ActiveTab::Exports, exports_label)
                     .clicked()
                 {
                     self.active_tab = ActiveTab::Exports;
                 }
+                let types_label = format!("Types ({})", self.project.type_definitions.len());
                 if ui
-                    .selectable_label(self.active_tab == ActiveTab::Types, "Types")
+                    .selectable_label(self.active_tab == ActiveTab::Types, types_label)
                     .clicked()
                 {
                     self.active_tab = ActiveTab::Types;

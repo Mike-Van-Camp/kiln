@@ -46,6 +46,11 @@ impl Default for StringsView {
 }
 
 impl StringsView {
+    /// Return the number of extracted strings.
+    pub fn string_count(&self) -> usize {
+        self.strings.len()
+    }
+
     /// Invalidate the cache so strings are re-extracted on next render.
     pub fn invalidate_cache(&mut self) {
         self.cached = false;

@@ -311,8 +311,11 @@ impl KilnApp {
                         let first_addr = instructions.first().map(|i| i.address);
                         self.analysis.index_instructions(instructions);
 
-                        // Run control flow analysis (Sprint 5)
+                        // Run control flow analysis
                         self.analysis.run_analysis(&image);
+
+                        // Update hex view xref highlights
+                        self.hex_view.update_xref_targets(&self.analysis);
 
                         // Rebuild disasm view cache
                         self.disasm_view.invalidate_cache();
@@ -1101,6 +1104,7 @@ impl KilnApp {
                         let first_addr = instructions.first().map(|i| i.address);
                         self.analysis.index_instructions(instructions);
                         self.analysis.run_analysis(&image);
+                        self.hex_view.update_xref_targets(&self.analysis);
                         self.disasm_view.invalidate_cache();
                         if let Some(addr) = first_addr {
                             self.disasm_view.scroll_to_address = Some(addr);
@@ -1480,9 +1484,12 @@ impl KilnApp {
                             // Search in binary data
                             let data = &image.data;
                             let pat_len = pattern.len();
+                            self.hex_view.search_hits.clear();
                             if pat_len > 0 && pat_len <= data.len() {
                                 for i in 0..=data.len() - pat_len {
                                     if data[i..i + pat_len] == pattern[..] {
+                                        // Record hit offsets for hex view highlighting
+                                        self.hex_view.search_hits.push(i);
                                         // Try to find the virtual address
                                         let va = self.file_offset_to_va(i as u64);
                                         self.search_dialog.results.push(SearchResult {
@@ -1774,6 +1781,15 @@ impl eframe::App for KilnApp {
             self.apply_type_dialog.address = addr;
             self.apply_type_dialog.selected_type = "u8".to_string();
             self.apply_type_dialog.label.clear();
+        }
+
+        // Apply pending byte edits from hex view
+        for (offset, new_val) in self.hex_view.take_pending_edits() {
+            if let Some(ref mut image) = self.image {
+                if offset < image.data.len() {
+                    image.data[offset] = new_val;
+                }
+            }
         }
 
         // Check if disasm view has a pending apply-type request

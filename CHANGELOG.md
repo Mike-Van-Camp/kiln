@@ -40,7 +40,7 @@
 |--------|------------|--------|
 | Sprint 21 | Interactive Deep Dive: Selection, Navigation & Context Menus | ✅ Complete |
 | Sprint 22 | Performance Polish & UX Refinements | ✅ Complete |
-| Sprint 23 | Advanced Hex Interaction & Data Inspector | 🔲 Planned |
+| Sprint 23 | Advanced Hex Interaction & Data Inspector | ✅ Complete |
 | Sprint 24 | Bookmarks, Annotations & Workflow Polish | 🔲 Planned |
 
 ---
@@ -590,3 +590,22 @@ crates/kiln-core/src/
 - `crates/kiln-gui/src/views/diff_view.rs` — Improved empty state
 - `crates/kiln-gui/src/views/graph_view.rs` — Improved empty states
 - `crates/kiln-gui/src/app.rs` — Tab count badges, improved main empty state, cleaned all Sprint markers
+
+---
+
+## Sprint 23 — Advanced Hex Interaction & Data Inspector (Completed)
+
+### What was done
+- **Graph view: zoom & header overlap fix**: Fixed node header text overlapping with instruction text at low zoom levels by deriving layout spacing from actual clamped font sizes instead of raw zoom-scaled constants. Nodes too small for text are now rendered as plain rectangles.
+- **Graph view: zoom controls**: Added zoom in/out/reset buttons to the graph toolbar for easier interaction. Added a semi-transparent background behind the zoom indicator to prevent overlap with graph content.
+- **Hex view: byte-range selection**: Shift-click and drag now select a range of bytes (anchor + end). Selection range is visually highlighted and used by the data inspector and copy commands.
+- **Hex view: enhanced data inspector**: The data inspector panel now shows selected bytes as u8/u16/u32/u64, i8/i16/i32/i64, f32/f64 in both little-endian and big-endian formats. Displays the selection byte count.
+- **Hex view: xref highlighting**: Data cross-reference targets from the analysis database are highlighted in the hex view with a distinct row background and colored byte values.
+- **Hex view: inline byte editing**: Right-click "Edit Byte" enters inline edit mode. Type two hex nibbles to commit a byte value, Escape to cancel. Cursor automatically advances to the next byte.
+- **Hex view: extended copy formats**: Right-click context menu now offers "Copy as Hex String", "Copy as C Array", "Copy as Python Bytes", and "Copy as Raw Bytes" for the selected range.
+- **Hex view: search result highlighting**: Hex byte search results are now highlighted inline in the hex view with a distinct background color.
+
+### Files modified
+- `crates/kiln-gui/src/views/graph_view.rs` — Zoom/header overlap fix, zoom controls, zoom indicator background
+- `crates/kiln-gui/src/views/hex_view.rs` — Byte-range selection, enhanced data inspector, xref highlighting, inline editing, extended copy formats, search hit highlighting
+- `crates/kiln-gui/src/app.rs` — Wired hex view pending edits, xref target updates, search hit highlighting

@@ -395,12 +395,12 @@ With all foundational features in place (Sprints 1-20), the next phase focuses o
 ### Sprint 23 — Advanced Hex Interaction & Data Inspector
 **Goal:** Bring hex view to parity with dedicated hex editors.
 
-- [ ] Byte-range selection with shift-click and drag
-- [ ] Data inspector panel: show selected bytes as u8/u16/u32/u64/i8/i16/i32/i64/f32/f64 (both endiannesses)
-- [ ] Hex view: highlight cross-references from disassembly (color data xref targets)
-- [ ] Hex view: inline editing of byte values
-- [ ] Copy selection as hex, C array, Python bytes, or raw
-- [ ] Hex view: highlight search results inline
+- [x] Byte-range selection with shift-click and drag
+- [x] Data inspector panel: show selected bytes as u8/u16/u32/u64/i8/i16/i32/i64/f32/f64 (both endiannesses)
+- [x] Hex view: highlight cross-references from disassembly (color data xref targets)
+- [x] Hex view: inline editing of byte values
+- [x] Copy selection as hex, C array, Python bytes, or raw
+- [x] Hex view: highlight search results inline
 
 **Verification:** Select a range of bytes; data inspector shows all interpretations; edit a byte and see the change reflected.
 

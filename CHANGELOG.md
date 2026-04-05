@@ -34,6 +34,17 @@
 
 ---
 
+## Phase 3 — Interactivity & UX Deep Dive
+
+| Sprint | Description | Status |
+|--------|------------|--------|
+| Sprint 21 | Interactive Deep Dive: Selection, Navigation & Context Menus | ✅ Complete |
+| Sprint 22 | Performance Polish & UX Refinements | ✅ Complete |
+| Sprint 23 | Advanced Hex Interaction & Data Inspector | 🔲 Planned |
+| Sprint 24 | Bookmarks, Annotations & Workflow Polish | 🔲 Planned |
+
+---
+
 ## Sprint 3 — GUI Shell & Hex View (Completed)
 
 ### What was done

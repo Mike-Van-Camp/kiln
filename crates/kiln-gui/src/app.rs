@@ -1812,6 +1812,10 @@ impl eframe::App for KilnApp {
                 }
                 ActiveTab::Graph => {
                     self.graph_view.render(ui, &self.analysis);
+                    if let Some(addr) = self.graph_view.take_pending_navigation() {
+                        self.active_tab = ActiveTab::Disassembly;
+                        self.navigate_to_address(addr);
+                    }
                 }
                 ActiveTab::Decompiler => {
                     self.decompiler_view

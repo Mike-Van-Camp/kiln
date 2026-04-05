@@ -255,11 +255,66 @@ impl DiffView {
                     };
 
                     let line = format!("{:<3} {:<30} │ {}", prefix, old_part, new_part);
-                    ui.label(
+                    let response = ui.selectable_label(
+                        false,
                         RichText::new(&line)
                             .font(mono.clone())
                             .color(color),
                     );
+
+                    // Hover tooltip with full instruction details
+                    let mut hover_text = String::new();
+                    if let Some(old) = &d.old_instruction {
+                        hover_text.push_str(&format!(
+                            "Old: 0x{:08x}  {} {}\n",
+                            old.address, old.mnemonic, old.operands
+                        ));
+                    }
+                    if let Some(new) = &d.new_instruction {
+                        hover_text.push_str(&format!(
+                            "New: 0x{:08x}  {} {}",
+                            new.address, new.mnemonic, new.operands
+                        ));
+                    }
+                    let response = if !hover_text.is_empty() {
+                        response.on_hover_text(hover_text)
+                    } else {
+                        response
+                    };
+
+                    // Right-click context menu
+                    response.context_menu(|ui| {
+                        if let Some(old) = &d.old_instruction {
+                            if ui.button("Copy Old Address").clicked() {
+                                ui.ctx().copy_text(format!("0x{:08x}", old.address));
+                                ui.close_menu();
+                            }
+                        }
+                        if let Some(new) = &d.new_instruction {
+                            if ui.button("Copy New Address").clicked() {
+                                ui.ctx().copy_text(format!("0x{:08x}", new.address));
+                                ui.close_menu();
+                            }
+                        }
+                        if let Some(old) = &d.old_instruction {
+                            if ui.button("Copy Old Instruction").clicked() {
+                                ui.ctx().copy_text(format!(
+                                    "{} {}",
+                                    old.mnemonic, old.operands
+                                ));
+                                ui.close_menu();
+                            }
+                        }
+                        if let Some(new) = &d.new_instruction {
+                            if ui.button("Copy New Instruction").clicked() {
+                                ui.ctx().copy_text(format!(
+                                    "{} {}",
+                                    new.mnemonic, new.operands
+                                ));
+                                ui.close_menu();
+                            }
+                        }
+                    });
                 }
             });
     }

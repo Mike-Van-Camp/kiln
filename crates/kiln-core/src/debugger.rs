@@ -77,8 +77,10 @@ impl DebugSession {
             hit_count: 0,
             condition: None,
         });
-        self.output_log
-            .push(format!("Breakpoint {} set at 0x{:x}", self.next_bp_id, addr));
+        self.output_log.push(format!(
+            "Breakpoint {} set at 0x{:x}",
+            self.next_bp_id, addr
+        ));
         self.next_bp_id
     }
 
@@ -118,8 +120,9 @@ impl DebugSession {
             label: label.clone(),
             data: vec![0; size],
         });
-        self.output_log
-            .push(format!("Watch \"{label}\" added at 0x{address:x} ({size} bytes)"));
+        self.output_log.push(format!(
+            "Watch \"{label}\" added at 0x{address:x} ({size} bytes)"
+        ));
     }
 
     /// Remove a memory watch by index.
@@ -127,8 +130,7 @@ impl DebugSession {
         if index < self.watches.len() {
             let label = self.watches[index].label.clone();
             self.watches.remove(index);
-            self.output_log
-                .push(format!("Watch \"{label}\" removed"));
+            self.output_log.push(format!("Watch \"{label}\" removed"));
         }
     }
 }

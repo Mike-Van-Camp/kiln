@@ -9,7 +9,7 @@ pub mod loader;
 pub mod model;
 pub mod perf;
 
-pub use debug_info::{DebugInfo, parse_debug_info};
+pub use debug_info::{parse_debug_info, DebugInfo};
 pub use loader::load_binary;
 pub use model::{
     Architecture, BinaryFormat, BinaryImage, Section, SectionKind, Symbol, SymbolKind,

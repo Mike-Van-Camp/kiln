@@ -138,11 +138,8 @@ impl HexView {
                     let is_selected = self.selected_row == Some(row_offset);
 
                     // Check for applied type overlays at this row's offset
-                    let applied_info = self.find_applied_type(
-                        row_offset as u64,
-                        BYTES_PER_ROW as u64,
-                        project,
-                    );
+                    let applied_info =
+                        self.find_applied_type(row_offset as u64, BYTES_PER_ROW as u64, project);
 
                     // Paint selection highlight behind the row
                     if is_selected {
@@ -151,8 +148,7 @@ impl HexView {
                             rect.min,
                             egui::vec2(rect.width(), row_height),
                         );
-                        ui.painter()
-                            .rect_filled(row_rect, 0.0, COLOR_SELECTED_BG);
+                        ui.painter().rect_filled(row_rect, 0.0, COLOR_SELECTED_BG);
                     }
 
                     let response = ui.horizontal(|ui| {
@@ -193,8 +189,7 @@ impl HexView {
                             ui.close_menu();
                         }
                         if ui.button("Copy Hex Bytes").clicked() {
-                            ui.ctx()
-                                .copy_text(hex_str.trim_end().to_string());
+                            ui.ctx().copy_text(hex_str.trim_end().to_string());
                             ui.close_menu();
                         }
                         if ui.button("Copy ASCII").clicked() {

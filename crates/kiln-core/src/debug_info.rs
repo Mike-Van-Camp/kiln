@@ -123,9 +123,7 @@ fn parse_dwarf_inner(data: &[u8]) -> Result<DebugInfo, Box<dyn std::error::Error
     };
 
     let dwarf_sections = gimli::DwarfSections::load(load_section)?;
-    let dwarf = dwarf_sections.borrow(|section| {
-        gimli::EndianSlice::new(section, endian)
-    });
+    let dwarf = dwarf_sections.borrow(|section| gimli::EndianSlice::new(section, endian));
 
     let has_info = {
         use object::ObjectSection;
@@ -272,14 +270,15 @@ fn parse_subprogram<'a>(
         .unwrap_or_else(|| format!("sub_{:x}", addr));
 
     // Return type
-    let return_type = entry
-        .attr_value(gimli::DW_AT_type)
-        .ok()
-        .flatten()
-        .and_then(|attr| match attr {
-            gimli::AttributeValue::UnitRef(offset) => resolve_type_name(dwarf, unit, offset),
-            _ => None,
-        });
+    let return_type =
+        entry
+            .attr_value(gimli::DW_AT_type)
+            .ok()
+            .flatten()
+            .and_then(|attr| match attr {
+                gimli::AttributeValue::UnitRef(offset) => resolve_type_name(dwarf, unit, offset),
+                _ => None,
+            });
 
     // Walk children for parameters and local variables
     let mut parameters = Vec::new();
@@ -358,14 +357,15 @@ fn parse_variable<'a>(
 ) -> Option<DebugVariable> {
     let name = attr_string(dwarf, unit, entry, gimli::DW_AT_name)?;
 
-    let type_name = entry
-        .attr_value(gimli::DW_AT_type)
-        .ok()
-        .flatten()
-        .and_then(|attr| match attr {
-            gimli::AttributeValue::UnitRef(offset) => resolve_type_name(dwarf, unit, offset),
-            _ => None,
-        });
+    let type_name =
+        entry
+            .attr_value(gimli::DW_AT_type)
+            .ok()
+            .flatten()
+            .and_then(|attr| match attr {
+                gimli::AttributeValue::UnitRef(offset) => resolve_type_name(dwarf, unit, offset),
+                _ => None,
+            });
 
     // Parse location (simplified: just grab the expression kind)
     let location = parse_location(entry);
@@ -448,53 +448,53 @@ fn parse_line_program(
     for seq in sequences {
         let mut sm = complete_program.resume_from(&seq);
         while let Ok(Some((_, &row))) = sm.next_row() {
-        if row.address() == 0 {
-            continue;
-        }
-        let file_entry = match row.file(header) {
-            Some(f) => f,
-            None => continue,
-        };
-
-        let file_name = match dwarf.attr_string(unit, file_entry.path_name()) {
-            Ok(s) => s.to_string_lossy().into_owned(),
-            Err(_) => continue,
-        };
-
-        // Optionally prepend directory
-        let dir_name: Option<String> = file_entry
-            .directory(header)
-            .and_then(|d| dwarf.attr_string(unit, d).ok())
-            .map(|s| s.to_string_lossy().into_owned());
-
-        let full_path = if let Some(dir) = dir_name {
-            if dir.is_empty() || file_name.starts_with('/') {
-                file_name
-            } else {
-                format!("{}/{}", dir, file_name)
+            if row.address() == 0 {
+                continue;
             }
-        } else {
-            file_name
-        };
+            let file_entry = match row.file(header) {
+                Some(f) => f,
+                None => continue,
+            };
 
-        let line = match row.line() {
-            Some(l) => l.get() as u32,
-            None => continue,
-        };
+            let file_name = match dwarf.attr_string(unit, file_entry.path_name()) {
+                Ok(s) => s.to_string_lossy().into_owned(),
+                Err(_) => continue,
+            };
 
-        let column = match row.column() {
-            gimli::ColumnType::LeftEdge => None,
-            gimli::ColumnType::Column(c) => Some(c.get() as u32),
-        };
+            // Optionally prepend directory
+            let dir_name: Option<String> = file_entry
+                .directory(header)
+                .and_then(|d| dwarf.attr_string(unit, d).ok())
+                .map(|s| s.to_string_lossy().into_owned());
 
-        source_lines.insert(
-            row.address(),
-            SourceLocation {
-                file: full_path,
-                line,
-                column,
-            },
-        );
+            let full_path = if let Some(dir) = dir_name {
+                if dir.is_empty() || file_name.starts_with('/') {
+                    file_name
+                } else {
+                    format!("{}/{}", dir, file_name)
+                }
+            } else {
+                file_name
+            };
+
+            let line = match row.line() {
+                Some(l) => l.get() as u32,
+                None => continue,
+            };
+
+            let column = match row.column() {
+                gimli::ColumnType::LeftEdge => None,
+                gimli::ColumnType::Column(c) => Some(c.get() as u32),
+            };
+
+            source_lines.insert(
+                row.address(),
+                SourceLocation {
+                    file: full_path,
+                    line,
+                    column,
+                },
+            );
         }
     }
 }
@@ -509,8 +509,8 @@ fn parse_line_program(
 /// detected but not yet implemented (returns indicator only).
 pub fn parse_debug_info(image: &BinaryImage) -> DebugInfo {
     // Check for DWARF sections
-    let has_dwarf = image.find_section(".debug_info").is_some()
-        || image.find_section("__debug_info").is_some();
+    let has_dwarf =
+        image.find_section(".debug_info").is_some() || image.find_section("__debug_info").is_some();
 
     if has_dwarf {
         return parse_dwarf(&image.data);
@@ -520,10 +520,7 @@ pub fn parse_debug_info(image: &BinaryImage) -> DebugInfo {
     if image.format == crate::model::BinaryFormat::Pe {
         // PE files may reference an external .pdb; detect the CodeView entry
         let has_pdb_ref = image.find_section(".rdata").is_some()
-            || image
-                .data
-                .windows(4)
-                .any(|w| w == b"RSDS" || w == b"NB10");
+            || image.data.windows(4).any(|w| w == b"RSDS" || w == b"NB10");
         if has_pdb_ref {
             return DebugInfo {
                 functions: BTreeMap::new(),

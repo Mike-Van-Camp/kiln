@@ -25,9 +25,7 @@ impl DiffView {
     pub fn render(&mut self, ui: &mut Ui) {
         if self.diff_result.is_none() {
             ui.centered_and_justified(|ui| {
-                ui.heading(
-                    "No diff loaded.\nUse File → Open Diff... to compare two binaries.",
-                );
+                ui.heading("No diff loaded.\nUse File → Open Diff... to compare two binaries.");
             });
             return;
         }
@@ -76,10 +74,22 @@ impl DiffView {
         let result = self.diff_result.as_ref().unwrap();
         let matches = &result.function_matches;
 
-        let matched = matches.iter().filter(|m| m.status == FunctionMatchStatus::Matched).count();
-        let modified = matches.iter().filter(|m| m.status == FunctionMatchStatus::Modified).count();
-        let added = matches.iter().filter(|m| m.status == FunctionMatchStatus::Added).count();
-        let removed = matches.iter().filter(|m| m.status == FunctionMatchStatus::Removed).count();
+        let matched = matches
+            .iter()
+            .filter(|m| m.status == FunctionMatchStatus::Matched)
+            .count();
+        let modified = matches
+            .iter()
+            .filter(|m| m.status == FunctionMatchStatus::Modified)
+            .count();
+        let added = matches
+            .iter()
+            .filter(|m| m.status == FunctionMatchStatus::Added)
+            .count();
+        let removed = matches
+            .iter()
+            .filter(|m| m.status == FunctionMatchStatus::Removed)
+            .count();
 
         ui.horizontal(|ui| {
             ui.label(format!("{} functions total", matches.len()));
@@ -131,12 +141,7 @@ impl DiffView {
                                 .as_deref()
                                 .or(m.new_function.as_deref())
                                 .unwrap_or("<unknown>");
-                            let label = format!(
-                                "{} {} ({:.0}%)",
-                                icon,
-                                name,
-                                m.similarity * 100.0
-                            );
+                            let label = format!("{} {} ({:.0}%)", icon, name, m.similarity * 100.0);
                             let is_selected = selected == Some(idx);
                             let response = ui.selectable_label(
                                 is_selected,
@@ -201,10 +206,7 @@ impl DiffView {
     }
 
     /// Render the instruction-level diff table.
-    fn render_instruction_diffs(
-        ui: &mut Ui,
-        diffs: &[kiln_core::diff::InstructionDiff],
-    ) {
+    fn render_instruction_diffs(ui: &mut Ui, diffs: &[kiln_core::diff::InstructionDiff]) {
         let mono = FontId::monospace(13.0);
 
         // Column header
@@ -257,9 +259,7 @@ impl DiffView {
                     let line = format!("{:<3} {:<30} │ {}", prefix, old_part, new_part);
                     let response = ui.selectable_label(
                         false,
-                        RichText::new(&line)
-                            .font(mono.clone())
-                            .color(color),
+                        RichText::new(&line).font(mono.clone()).color(color),
                     );
 
                     // Hover tooltip with full instruction details
@@ -298,19 +298,15 @@ impl DiffView {
                         }
                         if let Some(old) = &d.old_instruction {
                             if ui.button("Copy Old Instruction").clicked() {
-                                ui.ctx().copy_text(format!(
-                                    "{} {}",
-                                    old.mnemonic, old.operands
-                                ));
+                                ui.ctx()
+                                    .copy_text(format!("{} {}", old.mnemonic, old.operands));
                                 ui.close_menu();
                             }
                         }
                         if let Some(new) = &d.new_instruction {
                             if ui.button("Copy New Instruction").clicked() {
-                                ui.ctx().copy_text(format!(
-                                    "{} {}",
-                                    new.mnemonic, new.operands
-                                ));
+                                ui.ctx()
+                                    .copy_text(format!("{} {}", new.mnemonic, new.operands));
                                 ui.close_menu();
                             }
                         }

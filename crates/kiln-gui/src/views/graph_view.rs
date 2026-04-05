@@ -123,10 +123,7 @@ impl GraphView {
 
             ui.separator();
 
-            if ui
-                .selectable_label(self.show_minimap, "Minimap")
-                .clicked()
-            {
+            if ui.selectable_label(self.show_minimap, "Minimap").clicked() {
                 self.show_minimap = !self.show_minimap;
             }
 
@@ -246,12 +243,10 @@ impl GraphView {
                 for i in 1..=steps {
                     let t = i as f32 / steps as f32;
                     let inv = 1.0 - t;
-                    let x = inv * inv * mapped[0].x
-                        + 2.0 * inv * t * mapped[1].x
-                        + t * t * mapped[2].x;
-                    let y = inv * inv * mapped[0].y
-                        + 2.0 * inv * t * mapped[1].y
-                        + t * t * mapped[2].y;
+                    let x =
+                        inv * inv * mapped[0].x + 2.0 * inv * t * mapped[1].x + t * t * mapped[2].x;
+                    let y =
+                        inv * inv * mapped[0].y + 2.0 * inv * t * mapped[1].y + t * t * mapped[2].y;
                     let cur = Pos2::new(x, y);
                     painter.line_segment([prev, cur], stroke);
                     prev = cur;
@@ -312,8 +307,7 @@ impl GraphView {
                 StrokeKind::Outside,
             );
 
-            let header_pos =
-                Pos2::new(rect.min.x + 4.0 * self.zoom, rect.min.y + 2.0 * self.zoom);
+            let header_pos = Pos2::new(rect.min.x + 4.0 * self.zoom, rect.min.y + 2.0 * self.zoom);
 
             let header_text = format!("0x{:08x}", node.block_addr);
 
@@ -434,12 +428,7 @@ impl GraphView {
             .iter()
             .map(|e| graph::SvgEdge {
                 points: e.points.iter().map(|p| (p.x, p.y)).collect(),
-                color: format!(
-                    "#{:02x}{:02x}{:02x}",
-                    e.color.r(),
-                    e.color.g(),
-                    e.color.b()
-                ),
+                color: format!("#{:02x}{:02x}{:02x}", e.color.r(), e.color.g(), e.color.b()),
             })
             .collect();
 
@@ -498,7 +487,11 @@ fn draw_minimap(
     let mm_rect = Rect::from_min_size(mm_origin, Vec2::new(mm_w, mm_h));
 
     // Background
-    painter.rect_filled(mm_rect, 2.0, Color32::from_rgba_premultiplied(20, 20, 30, 200));
+    painter.rect_filled(
+        mm_rect,
+        2.0,
+        Color32::from_rgba_premultiplied(20, 20, 30, 200),
+    );
     painter.rect_stroke(
         mm_rect,
         2.0,
@@ -819,11 +812,8 @@ fn build_dominance_layout(func: &Function) -> GraphLayout {
         insns: Vec<(u64, String)>,
     }
 
-    let block_map: HashMap<u64, &kiln_core::model::BasicBlock> = func
-        .blocks
-        .iter()
-        .map(|b| (b.start_addr, b))
-        .collect();
+    let block_map: HashMap<u64, &kiln_core::model::BasicBlock> =
+        func.blocks.iter().map(|b| (b.start_addr, b)).collect();
 
     let mut ninfos: HashMap<u64, NInfo> = HashMap::new();
     for &addr in layer_map.keys() {

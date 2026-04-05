@@ -176,15 +176,11 @@ impl StringsView {
                         .content
                         .len()
                         .cmp(&strings[b].content.len())
-                        .then_with(|| {
-                            strings[a].virtual_address.cmp(&strings[b].virtual_address)
-                        }),
+                        .then_with(|| strings[a].virtual_address.cmp(&strings[b].virtual_address)),
                     StringsSortColumn::Content => strings[a]
                         .content
                         .cmp(&strings[b].content)
-                        .then_with(|| {
-                            strings[a].virtual_address.cmp(&strings[b].virtual_address)
-                        }),
+                        .then_with(|| strings[a].virtual_address.cmp(&strings[b].virtual_address)),
                 };
                 if asc {
                     cmp
@@ -197,15 +193,29 @@ impl StringsView {
         // Header
         let mono = FontId::monospace(13.0);
         let arrow_str = if self.sort_ascending { " ▲" } else { " ▼" };
-        let addr_arrow = if self.sort_column == StringsSortColumn::Address { arrow_str } else { "" };
-        let len_arrow = if self.sort_column == StringsSortColumn::Length { arrow_str } else { "" };
-        let content_arrow = if self.sort_column == StringsSortColumn::Content { arrow_str } else { "" };
+        let addr_arrow = if self.sort_column == StringsSortColumn::Address {
+            arrow_str
+        } else {
+            ""
+        };
+        let len_arrow = if self.sort_column == StringsSortColumn::Length {
+            arrow_str
+        } else {
+            ""
+        };
+        let content_arrow = if self.sort_column == StringsSortColumn::Content {
+            arrow_str
+        } else {
+            ""
+        };
         ui.horizontal(|ui| {
             let addr_label = format!("Address     {}", addr_arrow);
             if ui
                 .selectable_label(
                     self.sort_column == StringsSortColumn::Address,
-                    RichText::new(addr_label).font(mono.clone()).color(Color32::GRAY),
+                    RichText::new(addr_label)
+                        .font(mono.clone())
+                        .color(Color32::GRAY),
                 )
                 .clicked()
             {
@@ -225,7 +235,9 @@ impl StringsView {
             if ui
                 .selectable_label(
                     self.sort_column == StringsSortColumn::Length,
-                    RichText::new(len_label).font(mono.clone()).color(Color32::GRAY),
+                    RichText::new(len_label)
+                        .font(mono.clone())
+                        .color(Color32::GRAY),
                 )
                 .clicked()
             {
@@ -245,7 +257,9 @@ impl StringsView {
             if ui
                 .selectable_label(
                     self.sort_column == StringsSortColumn::Content,
-                    RichText::new(str_label).font(mono.clone()).color(Color32::GRAY),
+                    RichText::new(str_label)
+                        .font(mono.clone())
+                        .color(Color32::GRAY),
                 )
                 .clicked()
             {

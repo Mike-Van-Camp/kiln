@@ -692,10 +692,10 @@ mod tests {
         // A -> D, B -> C  (crossed edges)
         // After minimization, layer 1 should be [D, C] or the order that reduces crossings
         let blocks = vec![
-            make_block(0x100, vec![0x400], vec![]),      // A -> D
-            make_block(0x200, vec![0x300], vec![]),       // B -> C
-            make_block(0x300, vec![], vec![0x200]),       // C
-            make_block(0x400, vec![], vec![0x100]),       // D
+            make_block(0x100, vec![0x400], vec![]), // A -> D
+            make_block(0x200, vec![0x300], vec![]), // B -> C
+            make_block(0x300, vec![], vec![0x200]), // C
+            make_block(0x400, vec![], vec![0x100]), // D
         ];
         let mut layer_blocks = vec![vec![0x100, 0x200], vec![0x300, 0x400]];
         minimize_crossings(&mut layer_blocks, &blocks, 2);
@@ -781,15 +781,13 @@ mod tests {
                 blocks: vec![BasicBlock {
                     start_addr: 0x1000,
                     end_addr: 0x1010,
-                    instructions: vec![
-                        Instruction {
-                            address: 0x1000,
-                            size: 4,
-                            bytes: vec![0; 4],
-                            mnemonic: "call".to_string(),
-                            operands: "0x2000".to_string(),
-                        },
-                    ],
+                    instructions: vec![Instruction {
+                        address: 0x1000,
+                        size: 4,
+                        bytes: vec![0; 4],
+                        mnemonic: "call".to_string(),
+                        operands: "0x2000".to_string(),
+                    }],
                     successors: vec![],
                     predecessors: vec![],
                 }],

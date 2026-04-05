@@ -69,12 +69,20 @@ impl ExportsView {
         let mono = FontId::monospace(13.0);
         ui.horizontal(|ui| {
             let addr_arrow = if !self.sort_by_name {
-                if self.sort_ascending { " ▲" } else { " ▼" }
+                if self.sort_ascending {
+                    " ▲"
+                } else {
+                    " ▼"
+                }
             } else {
                 ""
             };
             let name_arrow = if self.sort_by_name {
-                if self.sort_ascending { " ▲" } else { " ▼" }
+                if self.sort_ascending {
+                    " ▲"
+                } else {
+                    " ▼"
+                }
             } else {
                 ""
             };
@@ -82,7 +90,9 @@ impl ExportsView {
             if ui
                 .selectable_label(
                     !self.sort_by_name,
-                    RichText::new(addr_label).font(mono.clone()).color(Color32::GRAY),
+                    RichText::new(addr_label)
+                        .font(mono.clone())
+                        .color(Color32::GRAY),
                 )
                 .clicked()
             {
@@ -102,7 +112,9 @@ impl ExportsView {
             if ui
                 .selectable_label(
                     self.sort_by_name,
-                    RichText::new(name_label).font(mono.clone()).color(Color32::GRAY),
+                    RichText::new(name_label)
+                        .font(mono.clone())
+                        .color(Color32::GRAY),
                 )
                 .clicked()
             {

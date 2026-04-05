@@ -1,9 +1,7 @@
 //! Types editor view: list, create, and edit user-defined data types.
 
 use egui::{Color32, RichText, Ui};
-use kiln_project::{
-    EnumDef, EnumVariant, PrimitiveType, StructDef, StructField, TypeDef,
-};
+use kiln_project::{EnumDef, EnumVariant, PrimitiveType, StructDef, StructField, TypeDef};
 
 /// Color constants for the types view.
 const COLOR_TYPE_NAME: Color32 = Color32::from_rgb(180, 220, 140);
@@ -75,7 +73,9 @@ impl TypesView {
 
         if user_types.is_empty() {
             ui.centered_and_justified(|ui| {
-                ui.label("No user-defined types yet.\nUse the buttons above to create structs or enums.");
+                ui.label(
+                    "No user-defined types yet.\nUse the buttons above to create structs or enums.",
+                );
             });
             return None;
         }
@@ -95,7 +95,10 @@ impl TypesView {
                         let header = match def {
                             TypeDef::Struct(_) => format!("📦 struct {}", type_name),
                             TypeDef::Enum(_) => format!("🏷 enum {}", type_name),
-                            TypeDef::Array { element_type_name, count } => {
+                            TypeDef::Array {
+                                element_type_name,
+                                count,
+                            } => {
                                 format!("📐 {}[{}]", element_type_name, count)
                             }
                             TypeDef::Primitive(_) => continue,
@@ -121,8 +124,7 @@ impl TypesView {
                                 |ui| {
                                     if ui.small_button("🗑").on_hover_text("Delete type").clicked()
                                     {
-                                        action =
-                                            Some(TypesAction::DeleteType(type_name.clone()));
+                                        action = Some(TypesAction::DeleteType(type_name.clone()));
                                     }
                                     if ui.small_button("✏").on_hover_text("Edit type").clicked() {
                                         match def {
@@ -132,13 +134,10 @@ impl TypesView {
                                                 struct_dialog.fields = s
                                                     .fields
                                                     .iter()
-                                                    .map(|f| {
-                                                        (f.name.clone(), f.type_name.clone())
-                                                    })
+                                                    .map(|f| (f.name.clone(), f.type_name.clone()))
                                                     .collect();
                                                 struct_dialog.error = None;
-                                                struct_dialog.editing =
-                                                    Some(type_name.clone());
+                                                struct_dialog.editing = Some(type_name.clone());
                                             }
                                             TypeDef::Enum(e) => {
                                                 enum_dialog.open = true;
@@ -146,13 +145,10 @@ impl TypesView {
                                                 enum_dialog.variants = e
                                                     .variants
                                                     .iter()
-                                                    .map(|v| {
-                                                        (v.name.clone(), v.value.to_string())
-                                                    })
+                                                    .map(|v| (v.name.clone(), v.value.to_string()))
                                                     .collect();
                                                 enum_dialog.error = None;
-                                                enum_dialog.editing =
-                                                    Some(type_name.clone());
+                                                enum_dialog.editing = Some(type_name.clone());
                                             }
                                             _ => {}
                                         }
@@ -168,15 +164,12 @@ impl TypesView {
                                     for field in &s.fields {
                                         let fsize = project
                                             .get_type_def(&field.type_name)
-                                            .and_then(|d| {
-                                                d.size_bytes(&project.type_definitions)
-                                            })
+                                            .and_then(|d| d.size_bytes(&project.type_definitions))
                                             .map(|s| format!("({} B)", s))
                                             .unwrap_or_default();
                                         ui.horizontal(|ui| {
                                             ui.label(
-                                                RichText::new(&field.name)
-                                                    .color(COLOR_FIELD_NAME),
+                                                RichText::new(&field.name).color(COLOR_FIELD_NAME),
                                             );
                                             ui.label(format!(": {}", field.type_name));
                                             ui.label(
@@ -191,8 +184,7 @@ impl TypesView {
                                     for v in &e.variants {
                                         ui.horizontal(|ui| {
                                             ui.label(
-                                                RichText::new(&v.name)
-                                                    .color(COLOR_FIELD_NAME),
+                                                RichText::new(&v.name).color(COLOR_FIELD_NAME),
                                             );
                                             ui.label(format!("= {}", v.value));
                                         });
@@ -289,10 +281,7 @@ pub fn render_struct_editor(
                     let name = dialog.name.trim().to_string();
                     if name.is_empty() {
                         dialog.error = Some("Name cannot be empty".to_string());
-                    } else if PrimitiveType::ALL
-                        .iter()
-                        .any(|p| p.display_name() == name)
-                    {
+                    } else if PrimitiveType::ALL.iter().any(|p| p.display_name() == name) {
                         dialog.error = Some("Cannot use primitive type name".to_string());
                     } else if dialog.fields.is_empty() {
                         dialog.error = Some("Struct must have at least one field".to_string());
@@ -390,10 +379,7 @@ pub fn render_enum_editor(
                     let name = dialog.name.trim().to_string();
                     if name.is_empty() {
                         dialog.error = Some("Name cannot be empty".to_string());
-                    } else if PrimitiveType::ALL
-                        .iter()
-                        .any(|p| p.display_name() == name)
-                    {
+                    } else if PrimitiveType::ALL.iter().any(|p| p.display_name() == name) {
                         dialog.error = Some("Cannot use primitive type name".to_string());
                     } else if dialog.variants.is_empty() {
                         dialog.error = Some("Enum must have at least one variant".to_string());
@@ -407,10 +393,8 @@ pub fn render_enum_editor(
                                     value: val,
                                 }),
                                 Err(_) => {
-                                    dialog.error = Some(format!(
-                                        "Invalid integer value for '{}'",
-                                        vn
-                                    ));
+                                    dialog.error =
+                                        Some(format!("Invalid integer value for '{}'", vn));
                                     parse_err = true;
                                     break;
                                 }

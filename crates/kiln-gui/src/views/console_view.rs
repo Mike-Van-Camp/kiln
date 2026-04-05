@@ -79,9 +79,7 @@ impl ConsoleView {
                 self.history_pos = Some(new_pos);
                 self.input = self.history[new_pos].clone();
             }
-            if response.has_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::ArrowDown))
-            {
+            if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
                 if let Some(pos) = self.history_pos {
                     if pos + 1 < self.history.len() {
                         self.history_pos = Some(pos + 1);
@@ -93,8 +91,7 @@ impl ConsoleView {
                 }
             }
 
-            let enter = response.lost_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let enter = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             let run_clicked = ui.button("Run").clicked();
 
             if (enter || run_clicked) && !self.input.trim().is_empty() {

@@ -81,9 +81,7 @@ pub fn execute_script(
     });
 
     register_function_api(&mut engine, analysis);
-    engine.register_fn("to_hex", |val: i64| -> String {
-        format!("0x{:x}", val)
-    });
+    engine.register_fn("to_hex", |val: i64| -> String { format!("0x{:x}", val) });
 
     let mut scope = Scope::new();
     let result = engine.run_with_scope(&mut scope, code);
@@ -169,13 +167,16 @@ fn register_instruction_api(engine: &mut Engine, analysis: &AnalysisDatabase) {
         .instructions
         .iter()
         .map(|(&addr, insn)| {
-            (addr, InstructionInfo {
-                address: insn.address,
-                mnemonic: insn.mnemonic.clone(),
-                operands: insn.operands.clone(),
-                size: insn.size as i64,
-                bytes: insn.bytes.clone(),
-            })
+            (
+                addr,
+                InstructionInfo {
+                    address: insn.address,
+                    mnemonic: insn.mnemonic.clone(),
+                    operands: insn.operands.clone(),
+                    size: insn.size as i64,
+                    bytes: insn.bytes.clone(),
+                },
+            )
         })
         .collect();
 
@@ -187,12 +188,15 @@ fn register_instruction_api(engine: &mut Engine, analysis: &AnalysisDatabase) {
         }
     });
 
-    engine.register_fn("get_instructions_in_range", move |start: i64, end: i64| -> rhai::Array {
-        insn_map
-            .range(start as u64..end as u64)
-            .map(|(_, info)| instruction_to_dynamic(info))
-            .collect()
-    });
+    engine.register_fn(
+        "get_instructions_in_range",
+        move |start: i64, end: i64| -> rhai::Array {
+            insn_map
+                .range(start as u64..end as u64)
+                .map(|(_, info)| instruction_to_dynamic(info))
+                .collect()
+        },
+    );
 }
 
 fn instruction_to_dynamic(info: &InstructionInfo) -> Dynamic {
@@ -300,7 +304,10 @@ fn register_function_api(engine: &mut Engine, analysis: &AnalysisDatabase) {
         }
     });
     engine.register_fn("get_functions", move || -> rhai::Array {
-        func_infos.iter().map(|info| function_to_dynamic(info)).collect()
+        func_infos
+            .iter()
+            .map(|info| function_to_dynamic(info))
+            .collect()
     });
 }
 
@@ -309,7 +316,10 @@ fn function_to_dynamic(info: &FunctionInfo) -> Dynamic {
     map.insert("name".into(), Dynamic::from(info.name.clone()));
     map.insert("entry_addr".into(), Dynamic::from(info.entry_addr as i64));
     map.insert("block_count".into(), Dynamic::from(info.block_count));
-    map.insert("instruction_count".into(), Dynamic::from(info.instruction_count));
+    map.insert(
+        "instruction_count".into(),
+        Dynamic::from(info.instruction_count),
+    );
     Dynamic::from(map)
 }
 
@@ -360,7 +370,8 @@ mod tests {
         let mut project = empty_project();
         let result = execute_script(
             r#"let funcs = get_functions(); print(funcs.len());"#,
-            &analysis, &mut project,
+            &analysis,
+            &mut project,
         );
         assert!(result.error.is_none());
         assert_eq!(result.output[0].text, "0");
@@ -372,7 +383,8 @@ mod tests {
         let mut project = empty_project();
         let result = execute_script(
             r#"let insn = get_instruction(0x401000); if insn == () { print("not found"); }"#,
-            &analysis, &mut project,
+            &analysis,
+            &mut project,
         );
         assert!(result.error.is_none());
         assert_eq!(result.output[0].text, "not found");
@@ -384,7 +396,8 @@ mod tests {
         let mut project = empty_project();
         let result = execute_script(
             r#"set_comment(0x1000, "test comment");"#,
-            &analysis, &mut project,
+            &analysis,
+            &mut project,
         );
         assert!(result.error.is_none());
         assert_eq!(project.get_comment(0x1000), Some("test comment"));
@@ -394,10 +407,7 @@ mod tests {
     fn test_set_label_deferred() {
         let analysis = empty_analysis();
         let mut project = empty_project();
-        let result = execute_script(
-            r#"set_label(0x2000, "my_func");"#,
-            &analysis, &mut project,
-        );
+        let result = execute_script(r#"set_label(0x2000, "my_func");"#, &analysis, &mut project);
         assert!(result.error.is_none());
         assert_eq!(project.get_label(0x2000), Some("my_func"));
     }
@@ -417,7 +427,8 @@ mod tests {
         let mut project = empty_project();
         let result = execute_script(
             r#"let xrefs = get_xrefs_to(0x401000); print(xrefs.len());"#,
-            &analysis, &mut project,
+            &analysis,
+            &mut project,
         );
         assert!(result.error.is_none());
         assert_eq!(result.output[0].text, "0");
@@ -440,7 +451,8 @@ mod tests {
         project.set_comment(0x3000, "existing comment".to_string());
         let result = execute_script(
             r#"let c = get_comment(0x3000); print(c);"#,
-            &analysis, &mut project,
+            &analysis,
+            &mut project,
         );
         assert!(result.error.is_none());
         assert_eq!(result.output[0].text, "existing comment");

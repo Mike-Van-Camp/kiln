@@ -83,9 +83,7 @@ impl DebuggerView {
                         .push("Debugger connected (stub)".into());
                 } else {
                     self.session.state = DebuggerState::Disconnected;
-                    self.session
-                        .output_log
-                        .push("Debugger disconnected".into());
+                    self.session.output_log.push("Debugger disconnected".into());
                 }
             }
 
@@ -115,10 +113,7 @@ impl DebuggerView {
             }
 
             if ui
-                .add_enabled(
-                    is_running || is_paused,
-                    egui::Button::new("⏹ Stop"),
-                )
+                .add_enabled(is_running || is_paused, egui::Button::new("⏹ Stop"))
                 .clicked()
             {
                 self.session.state = DebuggerState::Exited;
@@ -137,11 +132,7 @@ impl DebuggerView {
 
     fn render_breakpoints_section(&mut self, ui: &mut Ui) {
         egui::CollapsingHeader::new(
-            RichText::new(format!(
-                "Breakpoints ({})",
-                self.session.breakpoints.len()
-            ))
-            .strong(),
+            RichText::new(format!("Breakpoints ({})", self.session.breakpoints.len())).strong(),
         )
         .default_open(true)
         .show(ui, |ui| {
@@ -260,11 +251,7 @@ impl DebuggerView {
 
     fn render_call_stack_section(&mut self, ui: &mut Ui) {
         egui::CollapsingHeader::new(
-            RichText::new(format!(
-                "Call Stack ({})",
-                self.session.call_stack.len()
-            ))
-            .strong(),
+            RichText::new(format!("Call Stack ({})", self.session.call_stack.len())).strong(),
         )
         .default_open(true)
         .show(ui, |ui| {
@@ -297,11 +284,7 @@ impl DebuggerView {
 
     fn render_memory_watch_section(&mut self, ui: &mut Ui) {
         egui::CollapsingHeader::new(
-            RichText::new(format!(
-                "Memory Watch ({})",
-                self.session.watches.len()
-            ))
-            .strong(),
+            RichText::new(format!("Memory Watch ({})", self.session.watches.len())).strong(),
         )
         .default_open(true)
         .show(ui, |ui| {
@@ -353,10 +336,7 @@ impl DebuggerView {
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         ui.strong(&watch.label);
-                        ui.monospace(format!(
-                            "0x{:x} ({} bytes)",
-                            watch.address, watch.size
-                        ));
+                        ui.monospace(format!("0x{:x} ({} bytes)", watch.address, watch.size));
                         if ui.small_button("✕").clicked() {
                             remove_idx = Some(i);
                         }
@@ -384,11 +364,7 @@ impl DebuggerView {
 
     fn render_output_log(&mut self, ui: &mut Ui) {
         egui::CollapsingHeader::new(
-            RichText::new(format!(
-                "Output Log ({})",
-                self.session.output_log.len()
-            ))
-            .strong(),
+            RichText::new(format!("Output Log ({})", self.session.output_log.len())).strong(),
         )
         .default_open(true)
         .show(ui, |ui| {

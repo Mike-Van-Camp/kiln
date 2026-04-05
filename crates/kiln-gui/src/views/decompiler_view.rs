@@ -115,7 +115,8 @@ impl DecompilerView {
 
                         // Syntax-highlighted line
                         let response = ui.add(
-                            egui::Label::new(highlight_line(line, &mono)).sense(egui::Sense::click()),
+                            egui::Label::new(highlight_line(line, &mono))
+                                .sense(egui::Sense::click()),
                         );
 
                         // Click to navigate to disassembly
@@ -151,7 +152,8 @@ impl DecompilerView {
 
         // Walk through statement addresses and assign to lines.
         // Line 0 is the signature line `{`; body starts at line 1.
-        let sorted_stmts: Vec<(usize, u64)> = decomp.address_map.iter().map(|(&k, &v)| (k, v)).collect();
+        let sorted_stmts: Vec<(usize, u64)> =
+            decomp.address_map.iter().map(|(&k, &v)| (k, v)).collect();
 
         // Simple heuristic: for each statement index, map its address to the
         // corresponding body line (offset by 1 for the signature line).

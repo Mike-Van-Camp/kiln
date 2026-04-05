@@ -136,7 +136,7 @@ fn jcc_to_condition(mnemonic: &str, lhs: &str, rhs: &str) -> IrExpr {
         "jge" => ">=",
         "jl" => "<",
         "jle" => "<=",
-        "ja" => ">",  // unsigned
+        "ja" => ">",   // unsigned
         "jae" => ">=", // unsigned
         "jb" => "<",   // unsigned
         "jbe" => "<=", // unsigned
@@ -461,10 +461,7 @@ fn extract_condition(block: &BasicBlock) -> Option<(IrExpr, &str)> {
         }
         _ => {
             // No recognized flag-setting instruction; emit generic condition
-            Some((
-                IrExpr::Var(format!("cond_{}", jcc)),
-                jcc,
-            ))
+            Some((IrExpr::Var(format!("cond_{}", jcc)), jcc))
         }
     }
 }
@@ -513,11 +510,8 @@ pub fn decompile_function(
     }
 
     let back_edges = detect_back_edges(func);
-    let block_map: HashMap<u64, &BasicBlock> = func
-        .blocks
-        .iter()
-        .map(|b| (b.start_addr, b))
-        .collect();
+    let block_map: HashMap<u64, &BasicBlock> =
+        func.blocks.iter().map(|b| (b.start_addr, b)).collect();
 
     let mut statements: Vec<IrStatement> = Vec::new();
     let mut address_map: BTreeMap<usize, u64> = BTreeMap::new();
@@ -590,7 +584,9 @@ pub fn decompile_function(
 
             let else_stmts: Vec<IrStatement> = if block.successors.len() >= 2 {
                 let jump_target = block.successors[1];
-                if !visited.contains(&jump_target) && !back_edges.iter().any(|&(_, t)| t == jump_target) {
+                if !visited.contains(&jump_target)
+                    && !back_edges.iter().any(|&(_, t)| t == jump_target)
+                {
                     if let Some(eb) = block_map.get(&jump_target) {
                         visited.insert(jump_target);
                         lift_block(eb)
@@ -773,10 +769,7 @@ mod tests {
         let func = one_block_func(
             "simple",
             0x1000,
-            vec![
-                insn(0x1000, "mov", "eax, 0x0"),
-                insn(0x1003, "ret", ""),
-            ],
+            vec![insn(0x1000, "mov", "eax, 0x0"), insn(0x1003, "ret", "")],
         );
         let db = AnalysisDatabase::new();
         let di = DebugInfo::default();
@@ -823,10 +816,7 @@ mod tests {
         let func = one_block_func(
             "caller",
             0x3000,
-            vec![
-                insn(0x3000, "call", "printf"),
-                insn(0x3005, "ret", ""),
-            ],
+            vec![insn(0x3000, "call", "printf"), insn(0x3005, "ret", "")],
         );
         let db = AnalysisDatabase::new();
         let di = DebugInfo::default();
@@ -860,20 +850,14 @@ mod tests {
                 BasicBlock {
                     start_addr: 0x4006,
                     end_addr: 0x400A,
-                    instructions: vec![
-                        insn(0x4006, "mov", "ebx, 0x1"),
-                        insn(0x4009, "ret", ""),
-                    ],
+                    instructions: vec![insn(0x4006, "mov", "ebx, 0x1"), insn(0x4009, "ret", "")],
                     successors: vec![],
                     predecessors: vec![0x4000],
                 },
                 BasicBlock {
                     start_addr: 0x4010,
                     end_addr: 0x4014,
-                    instructions: vec![
-                        insn(0x4010, "mov", "ebx, 0x2"),
-                        insn(0x4013, "ret", ""),
-                    ],
+                    instructions: vec![insn(0x4010, "mov", "ebx, 0x2"), insn(0x4013, "ret", "")],
                     successors: vec![],
                     predecessors: vec![0x4000],
                 },
@@ -890,7 +874,11 @@ mod tests {
             .statements
             .iter()
             .any(|s| matches!(s, IrStatement::If { .. }));
-        assert!(has_if, "expected an If statement in: {:?}", result.statements);
+        assert!(
+            has_if,
+            "expected an If statement in: {:?}",
+            result.statements
+        );
     }
 
     #[test]
@@ -898,17 +886,17 @@ mod tests {
         let func = one_block_func(
             "gen",
             0x5000,
-            vec![
-                insn(0x5000, "mov", "eax, 0x1"),
-                insn(0x5003, "ret", ""),
-            ],
+            vec![insn(0x5000, "mov", "eax, 0x1"), insn(0x5003, "ret", "")],
         );
         let db = AnalysisDatabase::new();
         let di = DebugInfo::default();
         let decomp = decompile_function(&func, &db, &di);
         let code = generate_pseudo_code(&decomp);
 
-        assert!(code.contains("gen"), "signature should contain function name");
+        assert!(
+            code.contains("gen"),
+            "signature should contain function name"
+        );
         assert!(code.contains("eax = "), "should contain assignment");
         assert!(code.contains("return;"), "should contain return");
         assert!(code.contains('{'), "should contain opening brace");
@@ -955,7 +943,10 @@ mod tests {
 
         // push/nop/pop should be filtered; only mov and ret remain
         assert_eq!(result.statements.len(), 2);
-        assert!(matches!(&result.statements[0], IrStatement::Assignment { .. }));
+        assert!(matches!(
+            &result.statements[0],
+            IrStatement::Assignment { .. }
+        ));
         assert!(matches!(&result.statements[1], IrStatement::Return(None)));
     }
 
@@ -1030,10 +1021,7 @@ mod tests {
         let func = one_block_func(
             "mapped",
             0xA000,
-            vec![
-                insn(0xA000, "mov", "eax, 0x1"),
-                insn(0xA003, "ret", ""),
-            ],
+            vec![insn(0xA000, "mov", "eax, 0x1"), insn(0xA003, "ret", "")],
         );
         let db = AnalysisDatabase::new();
         let di = DebugInfo::default();

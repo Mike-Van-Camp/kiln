@@ -14,12 +14,22 @@ struct ExtractedString {
     section_name: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum StringsSortColumn {
+    #[default]
+    Address,
+    Length,
+    Content,
+}
+
 /// State for the strings view panel.
 pub struct StringsView {
     strings: Vec<ExtractedString>,
     filter: String,
     min_length: usize,
     cached: bool,
+    sort_column: StringsSortColumn,
+    sort_ascending: bool,
 }
 
 impl Default for StringsView {
@@ -29,11 +39,18 @@ impl Default for StringsView {
             filter: String::new(),
             min_length: DEFAULT_MIN_LENGTH,
             cached: false,
+            sort_column: StringsSortColumn::default(),
+            sort_ascending: true,
         }
     }
 }
 
 impl StringsView {
+    /// Return the number of extracted strings.
+    pub fn string_count(&self) -> usize {
+        self.strings.len()
+    }
+
     /// Invalidate the cache so strings are re-extracted on next render.
     pub fn invalidate_cache(&mut self) {
         self.cached = false;
@@ -144,18 +161,115 @@ impl StringsView {
         ));
         ui.separator();
 
+        // Sort filtered indices
+        let mut filtered = filtered;
+        {
+            let strings = &self.strings;
+            let col = self.sort_column;
+            let asc = self.sort_ascending;
+            filtered.sort_by(|&a, &b| {
+                let cmp = match col {
+                    StringsSortColumn::Address => {
+                        strings[a].virtual_address.cmp(&strings[b].virtual_address)
+                    }
+                    StringsSortColumn::Length => strings[a]
+                        .content
+                        .len()
+                        .cmp(&strings[b].content.len())
+                        .then_with(|| strings[a].virtual_address.cmp(&strings[b].virtual_address)),
+                    StringsSortColumn::Content => strings[a]
+                        .content
+                        .cmp(&strings[b].content)
+                        .then_with(|| strings[a].virtual_address.cmp(&strings[b].virtual_address)),
+                };
+                if asc {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
+            });
+        }
+
         // Header
         let mono = FontId::monospace(13.0);
+        let arrow_str = if self.sort_ascending { " ▲" } else { " ▼" };
+        let addr_arrow = if self.sort_column == StringsSortColumn::Address {
+            arrow_str
+        } else {
+            ""
+        };
+        let len_arrow = if self.sort_column == StringsSortColumn::Length {
+            arrow_str
+        } else {
+            ""
+        };
+        let content_arrow = if self.sort_column == StringsSortColumn::Content {
+            arrow_str
+        } else {
+            ""
+        };
         ui.horizontal(|ui| {
-            let header = format!(
-                "{:<12} {:<12} {:<6} {:<16} {}",
-                "Address", "Offset", "Len", "Section", "String"
-            );
+            let addr_label = format!("Address     {}", addr_arrow);
+            if ui
+                .selectable_label(
+                    self.sort_column == StringsSortColumn::Address,
+                    RichText::new(addr_label)
+                        .font(mono.clone())
+                        .color(Color32::GRAY),
+                )
+                .clicked()
+            {
+                if self.sort_column == StringsSortColumn::Address {
+                    self.sort_ascending = !self.sort_ascending;
+                } else {
+                    self.sort_column = StringsSortColumn::Address;
+                    self.sort_ascending = true;
+                }
+            }
             ui.label(
-                RichText::new(header)
+                RichText::new("Offset       ")
                     .font(mono.clone())
                     .color(Color32::GRAY),
             );
+            let len_label = format!("Len   {}", len_arrow);
+            if ui
+                .selectable_label(
+                    self.sort_column == StringsSortColumn::Length,
+                    RichText::new(len_label)
+                        .font(mono.clone())
+                        .color(Color32::GRAY),
+                )
+                .clicked()
+            {
+                if self.sort_column == StringsSortColumn::Length {
+                    self.sort_ascending = !self.sort_ascending;
+                } else {
+                    self.sort_column = StringsSortColumn::Length;
+                    self.sort_ascending = true;
+                }
+            }
+            ui.label(
+                RichText::new("Section          ")
+                    .font(mono.clone())
+                    .color(Color32::GRAY),
+            );
+            let str_label = format!("String{}", content_arrow);
+            if ui
+                .selectable_label(
+                    self.sort_column == StringsSortColumn::Content,
+                    RichText::new(str_label)
+                        .font(mono.clone())
+                        .color(Color32::GRAY),
+                )
+                .clicked()
+            {
+                if self.sort_column == StringsSortColumn::Content {
+                    self.sort_ascending = !self.sort_ascending;
+                } else {
+                    self.sort_column = StringsSortColumn::Content;
+                    self.sort_ascending = true;
+                }
+            }
         });
         ui.separator();
 

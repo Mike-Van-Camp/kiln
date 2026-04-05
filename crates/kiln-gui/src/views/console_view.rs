@@ -67,8 +67,31 @@ impl ConsoleView {
                     .font(egui::TextStyle::Monospace)
                     .hint_text("Enter Rhai script..."),
             );
-            let enter = response.lost_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+            if response.has_focus()
+                && ui.input(|i| i.key_pressed(egui::Key::ArrowUp))
+                && !self.history.is_empty()
+            {
+                let new_pos = match self.history_pos {
+                    None => self.history.len() - 1,
+                    Some(p) => p.saturating_sub(1),
+                };
+                self.history_pos = Some(new_pos);
+                self.input = self.history[new_pos].clone();
+            }
+            if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                if let Some(pos) = self.history_pos {
+                    if pos + 1 < self.history.len() {
+                        self.history_pos = Some(pos + 1);
+                        self.input = self.history[pos + 1].clone();
+                    } else {
+                        self.history_pos = None;
+                        self.input.clear();
+                    }
+                }
+            }
+
+            let enter = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             let run_clicked = ui.button("Run").clicked();
 
             if (enter || run_clicked) && !self.input.trim().is_empty() {

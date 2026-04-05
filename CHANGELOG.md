@@ -34,6 +34,17 @@
 
 ---
 
+## Phase 3 — Interactivity & UX Deep Dive
+
+| Sprint | Description | Status |
+|--------|------------|--------|
+| Sprint 21 | Interactive Deep Dive: Selection, Navigation & Context Menus | ✅ Complete |
+| Sprint 22 | Performance Polish & UX Refinements | ✅ Complete |
+| Sprint 23 | Advanced Hex Interaction & Data Inspector | 🔲 Planned |
+| Sprint 24 | Bookmarks, Annotations & Workflow Polish | 🔲 Planned |
+
+---
+
 ## Sprint 3 — GUI Shell & Hex View (Completed)
 
 ### What was done
@@ -529,3 +540,53 @@ crates/kiln-core/src/
 - **~13,200 lines** of Rust code
 - **119 passing tests**
 - **Zero new clippy warnings**
+
+---
+
+## Sprint 21 — Interactive Deep Dive: Selection, Navigation & Context Menus (Completed)
+
+### What was done
+- **Graph view: clickable nodes**: Left-clicking any node in the CFG, call graph, or dominance tree view navigates to that block's address in the disassembly view
+- **Graph view: hover highlighting**: Nodes get a brighter blue outline when the mouse hovers over them
+- **Graph view: right-click context menu**: Right-clicking a node shows "Copy Address" and "Go to Disassembly" options
+- **Sidebar: function filter**: Added a 🔍 search textbox to the function sidebar (both disassembly and graph modes) for real-time case-insensitive function name filtering
+- **Strings view: sortable columns**: Click on Address, Len, or String column headers to sort (with ▲/▼ indicators and ascending/descending toggle)
+- **Imports view: sortable columns**: Click on Address or Name headers to sort
+- **Exports view: sortable columns**: Click on Address or Name headers to sort
+- **Diff view: interactive rows**: Instruction diff rows are now selectable with hover effects and right-click context menus (Copy Old/New Address, Copy Old/New Instruction)
+- **Hex view: data inspector**: Selecting a row now shows a mini data inspector panel at the bottom displaying the value as u8, i8, u16 LE, u32 LE, and ASCII
+
+### Files modified
+- `crates/kiln-gui/src/views/graph_view.rs` — Clickable nodes, hover highlighting, context menus, cleaned up section separator comments
+- `crates/kiln-gui/src/views/strings_view.rs` — Sortable column headers, sort state
+- `crates/kiln-gui/src/views/imports_view.rs` — Sortable column headers, sort state
+- `crates/kiln-gui/src/views/exports_view.rs` — Sortable column headers, sort state
+- `crates/kiln-gui/src/views/diff_view.rs` — Selectable instruction rows with context menus
+- `crates/kiln-gui/src/views/hex_view.rs` — Byte-level selection, data inspector panel
+- `crates/kiln-gui/src/app.rs` — Function filter field, sidebar filter UI, graph view navigation wiring
+
+---
+
+## Sprint 22 — Performance Polish & UX Refinements (Completed)
+
+### What was done
+- **Console: command history navigation**: Up/Down arrow keys cycle through previously entered commands (using existing history state)
+- **Tab item count badges**: Strings, Imports, Exports, and Types tabs now show item counts in their labels (e.g., "Strings (142)")
+- **Improved empty state messages**: All views now show actionable guidance text when no data is loaded:
+  - Main panel: mentions both Open and Open Project
+  - Graph view: explains what to do
+  - Decompiler: guides to function selector
+  - Diff: explains the diff engine
+  - Console: mentions arrow key history
+  - Debugger: guides to Connect button for each panel section
+- **Sprint marker cleanup**: Removed all 56 `(Sprint N)` references from doc comments and inline comments across 11 source files
+- **Comment cleanup**: Removed unnecessary section separator comments from graph_view.rs
+
+### Files modified
+- `crates/kiln-gui/src/views/console_view.rs` — Arrow key history, cleaned Sprint marker
+- `crates/kiln-gui/src/views/debugger_view.rs` — Improved empty states, cleaned Sprint marker
+- `crates/kiln-gui/src/views/collab_view.rs` — Cleaned Sprint marker
+- `crates/kiln-gui/src/views/decompiler_view.rs` — Improved empty state
+- `crates/kiln-gui/src/views/diff_view.rs` — Improved empty state
+- `crates/kiln-gui/src/views/graph_view.rs` — Improved empty states
+- `crates/kiln-gui/src/app.rs` — Tab count badges, improved main empty state, cleaned all Sprint markers

@@ -18,9 +18,7 @@ use crate::views::graph_view::GraphView;
 use crate::views::hex_view::HexView;
 use crate::views::imports_view::ImportsView;
 use crate::views::strings_view::StringsView;
-use crate::views::types_view::{
-    ApplyTypeDialog, EnumEditorDialog, StructEditorDialog, TypesView,
-};
+use crate::views::types_view::{ApplyTypeDialog, EnumEditorDialog, StructEditorDialog, TypesView};
 
 /// Which main view tab is currently active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -241,6 +239,8 @@ pub struct KilnApp {
     pub debugger_view: DebuggerView,
     /// Progress tracker for long-running operations (Sprint 20).
     pub progress: Option<kiln_core::perf::ProgressTracker>,
+    /// Filter text for the function sidebar.
+    pub function_filter: String,
 }
 
 impl Default for KilnApp {
@@ -281,6 +281,7 @@ impl Default for KilnApp {
             decompiler_view: DecompilerView::default(),
             debugger_view: DebuggerView::default(),
             progress: None,
+            function_filter: String::new(),
         }
     }
 }
@@ -586,10 +587,7 @@ impl KilnApp {
                         );
                         ui.separator();
                     } else if self.image.is_some() {
-                        ui.label(
-                            egui::RichText::new("No debug info")
-                                .color(egui::Color32::GRAY),
-                        );
+                        ui.label(egui::RichText::new("No debug info").color(egui::Color32::GRAY));
                         ui.separator();
                     }
                     let func_count = self.analysis.functions.len();
@@ -651,26 +649,42 @@ impl KilnApp {
                     }
                 }
                 ui.separator();
+                let strings_label = if self.image.is_some() {
+                    format!("Strings ({})", self.strings_view.string_count())
+                } else {
+                    "Strings".to_string()
+                };
                 if ui
-                    .selectable_label(self.active_tab == ActiveTab::Strings, "Strings")
+                    .selectable_label(self.active_tab == ActiveTab::Strings, strings_label)
                     .clicked()
                 {
                     self.active_tab = ActiveTab::Strings;
                 }
+                let imports_label = if let Some(image) = &self.image {
+                    format!("Imports ({})", image.imports().len())
+                } else {
+                    "Imports".to_string()
+                };
                 if ui
-                    .selectable_label(self.active_tab == ActiveTab::Imports, "Imports")
+                    .selectable_label(self.active_tab == ActiveTab::Imports, imports_label)
                     .clicked()
                 {
                     self.active_tab = ActiveTab::Imports;
                 }
+                let exports_label = if let Some(image) = &self.image {
+                    format!("Exports ({})", image.exports().len())
+                } else {
+                    "Exports".to_string()
+                };
                 if ui
-                    .selectable_label(self.active_tab == ActiveTab::Exports, "Exports")
+                    .selectable_label(self.active_tab == ActiveTab::Exports, exports_label)
                     .clicked()
                 {
                     self.active_tab = ActiveTab::Exports;
                 }
+                let types_label = format!("Types ({})", self.project.type_definitions.len());
                 if ui
-                    .selectable_label(self.active_tab == ActiveTab::Types, "Types")
+                    .selectable_label(self.active_tab == ActiveTab::Types, types_label)
                     .clicked()
                 {
                     self.active_tab = ActiveTab::Types;
@@ -718,7 +732,14 @@ impl KilnApp {
                 ActiveTab::Disassembly => self.render_function_sidebar(ui),
                 ActiveTab::Graph => self.render_graph_function_sidebar(ui),
                 ActiveTab::Decompiler => self.render_function_sidebar(ui),
-                ActiveTab::Strings | ActiveTab::Imports | ActiveTab::Exports | ActiveTab::Types | ActiveTab::Console | ActiveTab::Diff | ActiveTab::Collab | ActiveTab::Debugger => {
+                ActiveTab::Strings
+                | ActiveTab::Imports
+                | ActiveTab::Exports
+                | ActiveTab::Types
+                | ActiveTab::Console
+                | ActiveTab::Diff
+                | ActiveTab::Collab
+                | ActiveTab::Debugger => {
                     self.render_info_sidebar(ui);
                 }
             });
@@ -774,6 +795,14 @@ impl KilnApp {
         ui.heading(format!("Functions ({})", func_count));
         ui.separator();
 
+        ui.horizontal(|ui| {
+            ui.label("🔍");
+            ui.text_edit_singleline(&mut self.function_filter);
+        });
+        ui.separator();
+
+        let filter = self.function_filter.to_lowercase();
+
         if func_count > 0 {
             // Collect function info; prefer debug signatures when available
             let funcs: Vec<(String, Option<String>, u64)> = self
@@ -784,6 +813,7 @@ impl KilnApp {
                     let sig = self.debug_info.signature_at(f.entry_addr).map(String::from);
                     (f.name.clone(), sig, f.entry_addr)
                 })
+                .filter(|(name, _, _)| filter.is_empty() || name.to_lowercase().contains(&filter))
                 .collect();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -811,6 +841,7 @@ impl KilnApp {
                 .function_symbols()
                 .iter()
                 .map(|s| (s.name.clone(), s.address))
+                .filter(|(name, _)| filter.is_empty() || name.to_lowercase().contains(&filter))
                 .collect();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -835,12 +866,21 @@ impl KilnApp {
         ui.heading(format!("Functions ({})", func_count));
         ui.separator();
 
+        ui.horizontal(|ui| {
+            ui.label("🔍");
+            ui.text_edit_singleline(&mut self.function_filter);
+        });
+        ui.separator();
+
+        let filter = self.function_filter.to_lowercase();
+
         if func_count > 0 {
             let funcs: Vec<(String, u64)> = self
                 .analysis
                 .functions
                 .values()
                 .map(|f| (f.name.clone(), f.entry_addr))
+                .filter(|(name, _)| filter.is_empty() || name.to_lowercase().contains(&filter))
                 .collect();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -1791,7 +1831,14 @@ impl eframe::App for KilnApp {
 
         // Main central panel
         egui::CentralPanel::default().show(ctx, |ui| {
-            if self.image.is_none() && self.active_tab != ActiveTab::Types && self.active_tab != ActiveTab::Console && self.active_tab != ActiveTab::Diff && self.active_tab != ActiveTab::Collab && self.active_tab != ActiveTab::Decompiler && self.active_tab != ActiveTab::Debugger {
+            if self.image.is_none()
+                && self.active_tab != ActiveTab::Types
+                && self.active_tab != ActiveTab::Console
+                && self.active_tab != ActiveTab::Diff
+                && self.active_tab != ActiveTab::Collab
+                && self.active_tab != ActiveTab::Decompiler
+                && self.active_tab != ActiveTab::Debugger
+            {
                 ui.centered_and_justified(|ui| {
                     ui.heading("Open a binary file to get started\n(File → Open or Ctrl+O)");
                 });
@@ -1801,17 +1848,25 @@ impl eframe::App for KilnApp {
             match self.active_tab {
                 ActiveTab::Hex => {
                     if let Some(image) = &self.image {
-                        self.hex_view
-                            .render(ui, &image.data, &self.project);
+                        self.hex_view.render(ui, &image.data, &self.project);
                     }
                 }
                 ActiveTab::Disassembly => {
                     let image_ref = self.image.as_ref();
-                    self.disasm_view
-                        .render(ui, &self.analysis, image_ref, &self.project, &self.debug_info);
+                    self.disasm_view.render(
+                        ui,
+                        &self.analysis,
+                        image_ref,
+                        &self.project,
+                        &self.debug_info,
+                    );
                 }
                 ActiveTab::Graph => {
                     self.graph_view.render(ui, &self.analysis);
+                    if let Some(addr) = self.graph_view.take_pending_navigation() {
+                        self.active_tab = ActiveTab::Disassembly;
+                        self.navigate_to_address(addr);
+                    }
                 }
                 ActiveTab::Decompiler => {
                     self.decompiler_view
@@ -1861,7 +1916,8 @@ impl eframe::App for KilnApp {
                     }
                 }
                 ActiveTab::Console => {
-                    self.console_view.render(ui, &self.analysis, &mut self.project);
+                    self.console_view
+                        .render(ui, &self.analysis, &mut self.project);
                 }
                 ActiveTab::Diff => {
                     self.diff_view.render(ui);

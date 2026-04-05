@@ -240,7 +240,10 @@ pub fn compute_diff(
             // Compute instruction-level diff for modified functions.
             let old_insns = function_instructions(old_func);
             let new_insns = function_instructions(new_func);
-            instruction_diffs.insert(old_func.name.clone(), diff_instructions(&old_insns, &new_insns));
+            instruction_diffs.insert(
+                old_func.name.clone(),
+                diff_instructions(&old_insns, &new_insns),
+            );
             matched_new_names.insert(new_func.name.clone());
         } else {
             function_matches.push(FunctionMatch {
@@ -278,13 +281,19 @@ pub fn compute_diff(
                 FunctionMatchStatus::Matched => 3,
             }
         }
-        rank(&a.status)
-            .cmp(&rank(&b.status))
-            .then_with(|| {
-                let a_name = a.old_function.as_deref().or(a.new_function.as_deref()).unwrap_or("");
-                let b_name = b.old_function.as_deref().or(b.new_function.as_deref()).unwrap_or("");
-                a_name.cmp(b_name)
-            })
+        rank(&a.status).cmp(&rank(&b.status)).then_with(|| {
+            let a_name = a
+                .old_function
+                .as_deref()
+                .or(a.new_function.as_deref())
+                .unwrap_or("");
+            let b_name = b
+                .old_function
+                .as_deref()
+                .or(b.new_function.as_deref())
+                .unwrap_or("");
+            a_name.cmp(b_name)
+        })
     });
 
     DiffResult {
@@ -373,9 +382,7 @@ pub fn export_diff_report(result: &DiffResult) -> String {
                 };
                 match d.kind {
                     InstructionDiffKind::Same | InstructionDiffKind::Modified => {
-                        if let (Some(old), Some(new)) =
-                            (&d.old_instruction, &d.new_instruction)
-                        {
+                        if let (Some(old), Some(new)) = (&d.old_instruction, &d.new_instruction) {
                             out.push_str(&format!(
                                 "  {} 0x{:08x}: {} {} | 0x{:08x}: {} {}\n",
                                 prefix,
@@ -528,7 +535,10 @@ mod tests {
             ],
         );
         let sim = function_similarity(&f1, &f2);
-        assert!((sim - 1.0).abs() < f64::EPSILON, "identical functions should have similarity 1.0");
+        assert!(
+            (sim - 1.0).abs() < f64::EPSILON,
+            "identical functions should have similarity 1.0"
+        );
 
         let f3 = make_function(
             "f",
@@ -540,19 +550,20 @@ mod tests {
             ],
         );
         let sim2 = function_similarity(&f1, &f3);
-        assert!(sim2 > 0.0 && sim2 < 1.0, "partially matching functions should have 0 < sim < 1");
+        assert!(
+            sim2 > 0.0 && sim2 < 1.0,
+            "partially matching functions should have 0 < sim < 1"
+        );
     }
 
     #[test]
     fn test_instruction_diff_same() {
-        let insns = vec![
-            InstructionSnapshot {
-                address: 0x1000,
-                mnemonic: "nop".to_string(),
-                operands: String::new(),
-                bytes: vec![0x90],
-            },
-        ];
+        let insns = vec![InstructionSnapshot {
+            address: 0x1000,
+            mnemonic: "nop".to_string(),
+            operands: String::new(),
+            bytes: vec![0x90],
+        }];
         let diffs = diff_instructions(&insns, &insns);
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].kind, InstructionDiffKind::Same);

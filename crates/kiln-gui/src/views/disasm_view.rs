@@ -503,7 +503,9 @@ impl DisasmView {
                 }
                 let addr = addresses[row_idx];
                 if let Some(insn) = analysis.get_instruction(addr) {
-                    self.render_instruction_row(ui, insn, &mono_font, analysis, project, debug_info);
+                    self.render_instruction_row(
+                        ui, insn, &mono_font, analysis, project, debug_info,
+                    );
                 }
             }
         });

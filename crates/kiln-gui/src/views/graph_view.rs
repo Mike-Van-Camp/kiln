@@ -10,10 +10,6 @@ use kiln_core::analysis::{is_branch_mnemonic, parse_target_address, AnalysisData
 use kiln_core::graph;
 use kiln_core::model::Function;
 
-// ---------------------------------------------------------------------------
-// Graph mode
-// ---------------------------------------------------------------------------
-
 /// Which graph to display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GraphMode {
@@ -21,10 +17,6 @@ enum GraphMode {
     CallGraph,
     DominanceTree,
 }
-
-// ---------------------------------------------------------------------------
-// Layout types (shared across modes)
-// ---------------------------------------------------------------------------
 
 /// Edge type for graph edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,10 +46,6 @@ struct GraphLayout {
     edges: Vec<EdgeLayout>,
 }
 
-// ---------------------------------------------------------------------------
-// GraphView
-// ---------------------------------------------------------------------------
-
 /// State for the CFG graph view.
 pub struct GraphView {
     /// Entry address of the currently selected function.
@@ -74,6 +62,10 @@ pub struct GraphView {
     mode: GraphMode,
     /// Show minimap overlay.
     show_minimap: bool,
+    /// Address to navigate to when a node is clicked.
+    pending_navigation: Option<u64>,
+    /// Block address for right-click context menu.
+    context_menu_node: Option<u64>,
 }
 
 impl Default for GraphView {
@@ -86,6 +78,8 @@ impl Default for GraphView {
             dragging: false,
             mode: GraphMode::Cfg,
             show_minimap: true,
+            pending_navigation: None,
+            context_menu_node: None,
         }
     }
 }
@@ -99,6 +93,11 @@ impl GraphView {
             self.pan_offset = Vec2::ZERO;
             self.zoom = 1.0;
         }
+    }
+
+    /// Take the pending navigation address, if any.
+    pub fn take_pending_navigation(&mut self) -> Option<u64> {
+        self.pending_navigation.take()
     }
 
     /// Render the graph view.
@@ -124,10 +123,7 @@ impl GraphView {
 
             ui.separator();
 
-            if ui
-                .selectable_label(self.show_minimap, "Minimap")
-                .clicked()
-            {
+            if ui.selectable_label(self.show_minimap, "Minimap").clicked() {
                 self.show_minimap = !self.show_minimap;
             }
 
@@ -247,12 +243,10 @@ impl GraphView {
                 for i in 1..=steps {
                     let t = i as f32 / steps as f32;
                     let inv = 1.0 - t;
-                    let x = inv * inv * mapped[0].x
-                        + 2.0 * inv * t * mapped[1].x
-                        + t * t * mapped[2].x;
-                    let y = inv * inv * mapped[0].y
-                        + 2.0 * inv * t * mapped[1].y
-                        + t * t * mapped[2].y;
+                    let x =
+                        inv * inv * mapped[0].x + 2.0 * inv * t * mapped[1].x + t * t * mapped[2].x;
+                    let y =
+                        inv * inv * mapped[0].y + 2.0 * inv * t * mapped[1].y + t * t * mapped[2].y;
                     let cur = Pos2::new(x, y);
                     painter.line_segment([prev, cur], stroke);
                     prev = cur;
@@ -273,9 +267,12 @@ impl GraphView {
             }
         }
 
-        // ── nodes ────────────────────────────────────────────────────
+        // ── nodes ─────────────────────────────────────────────────────
         let mono_font = FontId::monospace((12.0 * self.zoom).max(6.0));
         let header_font = FontId::monospace((13.0 * self.zoom).max(7.0));
+        let hover_pos = response.hover_pos();
+
+        let mut hovered_node: Option<u64> = None;
 
         for node in &layout.nodes {
             let rect = Rect::from_min_size(
@@ -286,16 +283,31 @@ impl GraphView {
                 node.rect.size() * self.zoom,
             );
 
+            let is_hovered = hover_pos.is_some_and(|pos| rect.contains(pos));
+            if is_hovered {
+                hovered_node = Some(node.block_addr);
+            }
+
             painter.rect_filled(rect, 4.0 * self.zoom, Color32::from_rgb(30, 30, 40));
+
+            let outline_color = if is_hovered {
+                Color32::from_rgb(140, 180, 255)
+            } else {
+                Color32::from_rgb(80, 80, 100)
+            };
+            let outline_width = if is_hovered {
+                2.0 * self.zoom
+            } else {
+                1.0 * self.zoom
+            };
             painter.rect_stroke(
                 rect,
                 4.0 * self.zoom,
-                Stroke::new(1.0 * self.zoom, Color32::from_rgb(80, 80, 100)),
+                Stroke::new(outline_width, outline_color),
                 StrokeKind::Outside,
             );
 
-            let header_pos =
-                Pos2::new(rect.min.x + 4.0 * self.zoom, rect.min.y + 2.0 * self.zoom);
+            let header_pos = Pos2::new(rect.min.x + 4.0 * self.zoom, rect.min.y + 2.0 * self.zoom);
 
             let header_text = format!("0x{:08x}", node.block_addr);
 
@@ -334,6 +346,32 @@ impl GraphView {
                     Color32::from_rgb(200, 200, 200),
                 );
             }
+        }
+
+        // Handle left-click on a node (only if not dragging)
+        if response.clicked() && !self.dragging {
+            if let Some(addr) = hovered_node {
+                self.pending_navigation = Some(addr);
+            }
+        }
+
+        // Track which node was right-clicked for context menu
+        if response.secondary_clicked() {
+            self.context_menu_node = hovered_node;
+        }
+
+        // Right-click context menu
+        if let Some(node_addr) = self.context_menu_node {
+            response.context_menu(|ui| {
+                if ui.button("Copy Address").clicked() {
+                    ui.ctx().copy_text(format!("0x{:08x}", node_addr));
+                    ui.close_menu();
+                }
+                if ui.button("Go to Disassembly").clicked() {
+                    self.pending_navigation = Some(node_addr);
+                    ui.close_menu();
+                }
+            });
         }
 
         // ── zoom indicator ───────────────────────────────────────────
@@ -390,12 +428,7 @@ impl GraphView {
             .iter()
             .map(|e| graph::SvgEdge {
                 points: e.points.iter().map(|p| (p.x, p.y)).collect(),
-                color: format!(
-                    "#{:02x}{:02x}{:02x}",
-                    e.color.r(),
-                    e.color.g(),
-                    e.color.b()
-                ),
+                color: format!("#{:02x}{:02x}{:02x}", e.color.r(), e.color.g(), e.color.b()),
             })
             .collect();
 
@@ -405,10 +438,6 @@ impl GraphView {
         })
     }
 }
-
-// ---------------------------------------------------------------------------
-// Arrowhead helper
-// ---------------------------------------------------------------------------
 
 fn draw_arrowhead(painter: &egui::Painter, from: Pos2, to: Pos2, color: Color32, zoom: f32) {
     let dir = (to - from).normalized();
@@ -426,10 +455,6 @@ fn draw_arrowhead(painter: &egui::Painter, from: Pos2, to: Pos2, color: Color32,
         Stroke::NONE,
     ));
 }
-
-// ---------------------------------------------------------------------------
-// Minimap
-// ---------------------------------------------------------------------------
 
 fn draw_minimap(
     painter: &egui::Painter,
@@ -462,7 +487,11 @@ fn draw_minimap(
     let mm_rect = Rect::from_min_size(mm_origin, Vec2::new(mm_w, mm_h));
 
     // Background
-    painter.rect_filled(mm_rect, 2.0, Color32::from_rgba_premultiplied(20, 20, 30, 200));
+    painter.rect_filled(
+        mm_rect,
+        2.0,
+        Color32::from_rgba_premultiplied(20, 20, 30, 200),
+    );
     painter.rect_stroke(
         mm_rect,
         2.0,
@@ -510,10 +539,6 @@ fn draw_minimap(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Branch helpers
-// ---------------------------------------------------------------------------
-
 fn is_conditional_branch(m: &str) -> bool {
     let lower = m.to_ascii_lowercase();
     if matches!(lower.as_str(), "jmp" | "b" | "bx") {
@@ -521,10 +546,6 @@ fn is_conditional_branch(m: &str) -> bool {
     }
     is_branch_mnemonic(&lower)
 }
-
-// ---------------------------------------------------------------------------
-// CFG layout (Sugiyama)
-// ---------------------------------------------------------------------------
 
 fn build_cfg_layout(func: &Function) -> GraphLayout {
     if func.blocks.is_empty() {
@@ -733,10 +754,6 @@ fn build_cfg_layout(func: &Function) -> GraphLayout {
     GraphLayout { nodes, edges }
 }
 
-// ---------------------------------------------------------------------------
-// Dominance tree layout
-// ---------------------------------------------------------------------------
-
 fn build_dominance_layout(func: &Function) -> GraphLayout {
     if func.blocks.is_empty() {
         return GraphLayout {
@@ -795,11 +812,8 @@ fn build_dominance_layout(func: &Function) -> GraphLayout {
         insns: Vec<(u64, String)>,
     }
 
-    let block_map: HashMap<u64, &kiln_core::model::BasicBlock> = func
-        .blocks
-        .iter()
-        .map(|b| (b.start_addr, b))
-        .collect();
+    let block_map: HashMap<u64, &kiln_core::model::BasicBlock> =
+        func.blocks.iter().map(|b| (b.start_addr, b)).collect();
 
     let mut ninfos: HashMap<u64, NInfo> = HashMap::new();
     for &addr in layer_map.keys() {
@@ -902,10 +916,6 @@ fn build_dominance_layout(func: &Function) -> GraphLayout {
 
     GraphLayout { nodes, edges }
 }
-
-// ---------------------------------------------------------------------------
-// Call graph layout
-// ---------------------------------------------------------------------------
 
 fn build_call_graph_layout(analysis: &AnalysisDatabase) -> GraphLayout {
     let (cg_nodes, cg_edges) = graph::extract_call_graph(&analysis.functions, &analysis.xrefs);

@@ -37,8 +37,7 @@ impl CollabView {
                 match project.export_annotations_json() {
                     Ok(json) => {
                         ui.ctx().copy_text(json);
-                        self.status_message =
-                            Some("Annotations exported to clipboard".to_string());
+                        self.status_message = Some("Annotations exported to clipboard".to_string());
                     }
                     Err(e) => {
                         self.status_message = Some(format!("Export error: {e}"));
@@ -62,14 +61,12 @@ impl CollabView {
                                 ));
                             } else {
                                 let n = conflicts.len();
-                                self.merge_resolutions =
-                                    vec![None; n];
+                                self.merge_resolutions = vec![None; n];
                                 self.merge_conflicts = conflicts;
                                 // Apply non-conflicting part
                                 project.annotations = merged;
-                                self.status_message = Some(format!(
-                                    "Merged with {n} conflict(s) — resolve below"
-                                ));
+                                self.status_message =
+                                    Some(format!("Merged with {n} conflict(s) — resolve below"));
                             }
                         }
                         Err(e) => {
@@ -148,16 +145,13 @@ impl CollabView {
                 });
             }
 
-            if all_resolved && !self.merge_conflicts.is_empty()
+            if all_resolved
+                && !self.merge_conflicts.is_empty()
                 && ui.button("Apply All Resolutions").clicked()
             {
                 for (i, conflict) in self.merge_conflicts.iter().enumerate() {
                     if let Some(res) = self.merge_resolutions[i] {
-                        Project::resolve_conflict(
-                            &mut project.annotations,
-                            conflict,
-                            res,
-                        );
+                        Project::resolve_conflict(&mut project.annotations, conflict, res);
                     }
                 }
                 self.merge_conflicts.clear();

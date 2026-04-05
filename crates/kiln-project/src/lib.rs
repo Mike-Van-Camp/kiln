@@ -251,10 +251,7 @@ impl Project {
         let mut type_definitions = HashMap::new();
         // Register all primitive types so they can be referenced by name.
         for p in PrimitiveType::ALL {
-            type_definitions.insert(
-                p.display_name().to_string(),
-                TypeDef::Primitive(*p),
-            );
+            type_definitions.insert(p.display_name().to_string(), TypeDef::Primitive(*p));
         }
         Self {
             metadata: ProjectMetadata {
@@ -709,26 +706,38 @@ mod tests {
         let json = project.export_annotations_json().unwrap();
         let imported = Project::import_annotations_json(&json).unwrap();
 
-        assert_eq!(imported.get(&0x1000).unwrap().comment.as_deref(), Some("hello"));
-        assert_eq!(imported.get(&0x2000).unwrap().label.as_deref(), Some("my_func"));
+        assert_eq!(
+            imported.get(&0x1000).unwrap().comment.as_deref(),
+            Some("hello")
+        );
+        assert_eq!(
+            imported.get(&0x2000).unwrap().label.as_deref(),
+            Some("my_func")
+        );
     }
 
     #[test]
     fn test_merge_no_conflicts() {
         let mut local = BTreeMap::new();
-        local.insert(0x1000, Annotation {
-            comment: Some("local only".into()),
-            label: None,
-            author: None,
-            timestamp: None,
-        });
+        local.insert(
+            0x1000,
+            Annotation {
+                comment: Some("local only".into()),
+                label: None,
+                author: None,
+                timestamp: None,
+            },
+        );
         let mut remote = BTreeMap::new();
-        remote.insert(0x2000, Annotation {
-            comment: Some("remote only".into()),
-            label: None,
-            author: None,
-            timestamp: None,
-        });
+        remote.insert(
+            0x2000,
+            Annotation {
+                comment: Some("remote only".into()),
+                label: None,
+                author: None,
+                timestamp: None,
+            },
+        );
 
         let (merged, conflicts) = Project::merge_annotations(&local, &remote);
         assert!(conflicts.is_empty());
@@ -740,19 +749,25 @@ mod tests {
     #[test]
     fn test_merge_with_conflicts() {
         let mut local = BTreeMap::new();
-        local.insert(0x1000, Annotation {
-            comment: Some("local comment".into()),
-            label: None,
-            author: None,
-            timestamp: None,
-        });
+        local.insert(
+            0x1000,
+            Annotation {
+                comment: Some("local comment".into()),
+                label: None,
+                author: None,
+                timestamp: None,
+            },
+        );
         let mut remote = BTreeMap::new();
-        remote.insert(0x1000, Annotation {
-            comment: Some("remote comment".into()),
-            label: None,
-            author: None,
-            timestamp: None,
-        });
+        remote.insert(
+            0x1000,
+            Annotation {
+                comment: Some("remote comment".into()),
+                label: None,
+                author: None,
+                timestamp: None,
+            },
+        );
 
         let (_, conflicts) = Project::merge_annotations(&local, &remote);
         assert_eq!(conflicts.len(), 1);
@@ -779,9 +794,18 @@ mod tests {
         project.remove_comment(0x1000);
 
         assert_eq!(project.history.len(), 3);
-        assert!(matches!(project.history[0].change, AnnotationChange::SetComment(_)));
-        assert!(matches!(project.history[1].change, AnnotationChange::SetLabel(_)));
-        assert!(matches!(project.history[2].change, AnnotationChange::RemoveComment));
+        assert!(matches!(
+            project.history[0].change,
+            AnnotationChange::SetComment(_)
+        ));
+        assert!(matches!(
+            project.history[1].change,
+            AnnotationChange::SetLabel(_)
+        ));
+        assert!(matches!(
+            project.history[2].change,
+            AnnotationChange::RemoveComment
+        ));
         assert_eq!(project.history[0].author, "bob");
     }
 }

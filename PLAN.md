@@ -351,3 +351,69 @@ With the MVP complete (Sprints 1-10), the next phase focuses on advanced analysi
 - [ ] Benchmark suite for performance regression testing
 
 **Verification:** Open a 200MB binary; UI remains responsive; analysis runs in background with progress indicator.
+
+---
+
+# Phase 3 — Interactivity & UX Deep Dive
+
+## TL;DR
+With all foundational features in place (Sprints 1-20), the next phase focuses on making every view truly interactive and polished. The goal is to close the interactivity gap with IDA Pro — everything should be clickable, navigable, and responsive. No more display-only text.
+
+---
+
+### Sprint 21 — Interactive Deep Dive: Selection, Navigation & Context Menus
+**Goal:** Make every view element interactive — clickable, selectable, and context-menu-aware.
+
+- [ ] Hex view: byte-level selection with highlighted cursor (click individual bytes)
+- [ ] Graph view: click on a node to navigate to that block's address in disassembly
+- [ ] Graph view: hover highlighting on nodes (subtle outline change)
+- [ ] Graph view: right-click context menu on nodes (Copy address, Go to disassembly, Decompile function)
+- [ ] Diff view: selectable instruction rows with context menus (Copy old/new instruction, Copy address)
+- [ ] Sidebar: function filter/search textbox to quickly find functions by name
+- [ ] Strings view: sortable columns (click header to sort by address, length, or content)
+- [ ] Imports/Exports view: sortable columns (click header to sort by address or name)
+
+**Verification:** Every clickable element responds visually; context menus offer relevant actions; function filter narrows the list in real-time.
+
+---
+
+### Sprint 22 — Performance Polish & UX Refinements
+**Goal:** Polish every rough edge, improve performance feedback, and clean up the codebase.
+
+- [ ] Console: command history navigation via up/down arrow keys
+- [ ] Tab bar: item count badges (e.g., "Strings (142)", "Imports (38)")
+- [ ] Hex view: track disassembly selection (highlight corresponding bytes when an instruction is selected)
+- [ ] Better empty state messages across all views (actionable hints instead of bare text)
+- [ ] Status bar: make function/xref/annotation counts clickable to navigate
+- [ ] Remove all unnecessary Sprint marker comments from the entire codebase
+- [ ] Clean up redundant/obvious doc comments across all source files
+
+**Verification:** Up/down arrows cycle console history; tab badges update dynamically; empty states guide users; codebase has zero Sprint marker comments.
+
+---
+
+### Sprint 23 — Advanced Hex Interaction & Data Inspector
+**Goal:** Bring hex view to parity with dedicated hex editors.
+
+- [ ] Byte-range selection with shift-click and drag
+- [ ] Data inspector panel: show selected bytes as u8/u16/u32/u64/i8/i16/i32/i64/f32/f64 (both endiannesses)
+- [ ] Hex view: highlight cross-references from disassembly (color data xref targets)
+- [ ] Hex view: inline editing of byte values
+- [ ] Copy selection as hex, C array, Python bytes, or raw
+- [ ] Hex view: highlight search results inline
+
+**Verification:** Select a range of bytes; data inspector shows all interpretations; edit a byte and see the change reflected.
+
+---
+
+### Sprint 24 — Bookmarks, Annotations & Workflow Polish
+**Goal:** Let users organize and track their analysis workflow.
+
+- [ ] Bookmark system: add/remove/list bookmarks at any address with optional notes
+- [ ] Bookmark sidebar panel (visible across all tabs)
+- [ ] Quick-jump to next/previous bookmark (Ctrl+B / Ctrl+Shift+B)
+- [ ] Annotation summary view: table of all comments and labels with filters
+- [ ] Recent files list in File menu
+- [ ] Session state persistence (remember open tab, scroll position, sidebar state)
+
+**Verification:** Add bookmarks; cycle through them; reopen app and find session restored.

@@ -62,6 +62,8 @@ pub struct GraphView {
     mode: GraphMode,
     /// Show minimap overlay.
     show_minimap: bool,
+    /// Whether to auto-center the graph on the next render.
+    needs_center: bool,
     /// Address to navigate to when a node is clicked.
     pending_navigation: Option<u64>,
     /// Block address for right-click context menu.
@@ -78,6 +80,7 @@ impl Default for GraphView {
             dragging: false,
             mode: GraphMode::Cfg,
             show_minimap: true,
+            needs_center: true,
             pending_navigation: None,
             context_menu_node: None,
         }
@@ -92,6 +95,7 @@ impl GraphView {
             self.layout = None;
             self.pan_offset = Vec2::ZERO;
             self.zoom = 1.0;
+            self.needs_center = true;
         }
     }
 
@@ -111,14 +115,17 @@ impl GraphView {
             if ui.selectable_label(was_cfg, "CFG").clicked() && !was_cfg {
                 self.mode = GraphMode::Cfg;
                 self.layout = None;
+                self.needs_center = true;
             }
             if ui.selectable_label(was_call, "Call Graph").clicked() && !was_call {
                 self.mode = GraphMode::CallGraph;
                 self.layout = None;
+                self.needs_center = true;
             }
             if ui.selectable_label(was_dom, "Dominance Tree").clicked() && !was_dom {
                 self.mode = GraphMode::DominanceTree;
                 self.layout = None;
+                self.needs_center = true;
             }
 
             ui.separator();
@@ -220,6 +227,32 @@ impl GraphView {
             egui::Sense::click_and_drag(),
         );
 
+        // Auto-center the graph in the viewport on first render after layout change.
+        if self.needs_center && !layout.nodes.is_empty() {
+            self.needs_center = false;
+            let mut min_x = f32::MAX;
+            let mut min_y = f32::MAX;
+            let mut max_x = f32::MIN;
+            let mut max_y = f32::MIN;
+            for node in &layout.nodes {
+                min_x = min_x.min(node.rect.min.x);
+                min_y = min_y.min(node.rect.min.y);
+                max_x = max_x.max(node.rect.max.x);
+                max_y = max_y.max(node.rect.max.y);
+            }
+            let graph_center_x = (min_x + max_x) / 2.0;
+            let graph_center_y = (min_y + max_y) / 2.0;
+            let canvas_center = response.rect.center();
+            let origin = response.rect.min;
+            // Set pan_offset so the graph center maps to the canvas center:
+            // screen_pos = world_pos * zoom + origin + pan_offset
+            // canvas_center = graph_center * zoom + origin + pan_offset
+            self.pan_offset = Vec2::new(
+                canvas_center.x - origin.x - graph_center_x * self.zoom,
+                canvas_center.y - origin.y - graph_center_y * self.zoom,
+            );
+        }
+
         if response.dragged_by(egui::PointerButton::Primary) {
             self.pan_offset += response.drag_delta();
             self.dragging = true;
@@ -235,7 +268,10 @@ impl GraphView {
             self.zoom = new_zoom;
 
             // Adjust pan so the point under the cursor stays fixed.
-            if let Some(cursor) = response.hover_pos() {
+            // Use latest_pos() from the input state rather than response.hover_pos()
+            // so the pivot works reliably even right after a drag operation.
+            let cursor = ui.input(|i| i.pointer.latest_pos());
+            if let Some(cursor) = cursor.filter(|p| response.rect.contains(*p)) {
                 let origin = response.rect.min.to_vec2();
                 // World coordinate under cursor before zoom change:
                 let cursor_world =

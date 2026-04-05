@@ -4,9 +4,20 @@ use egui::{Color32, FontId, RichText, Ui};
 use kiln_core::model::BinaryImage;
 
 /// State for the imports view panel.
-#[derive(Default)]
 pub struct ImportsView {
     filter: String,
+    sort_by_name: bool,
+    sort_ascending: bool,
+}
+
+impl Default for ImportsView {
+    fn default() -> Self {
+        Self {
+            filter: String::new(),
+            sort_by_name: false,
+            sort_ascending: true,
+        }
+    }
 }
 
 impl ImportsView {
@@ -24,10 +35,28 @@ impl ImportsView {
         ui.separator();
 
         let filter_lower = self.filter.to_lowercase();
-        let filtered: Vec<_> = imports
+        let mut filtered: Vec<_> = imports
             .iter()
             .filter(|s| filter_lower.is_empty() || s.name.to_lowercase().contains(&filter_lower))
             .collect();
+
+        // Sort filtered list
+        {
+            let by_name = self.sort_by_name;
+            let asc = self.sort_ascending;
+            filtered.sort_by(|a, b| {
+                let cmp = if by_name {
+                    a.name.cmp(&b.name).then_with(|| a.address.cmp(&b.address))
+                } else {
+                    a.address.cmp(&b.address)
+                };
+                if asc {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
+            });
+        }
 
         ui.label(format!(
             "{} imports ({} shown)",
@@ -39,12 +68,46 @@ impl ImportsView {
         // Header
         let mono = FontId::monospace(13.0);
         ui.horizontal(|ui| {
-            let header = format!("{:<12} {}", "Address", "Name");
-            ui.label(
-                RichText::new(header)
-                    .font(mono.clone())
-                    .color(Color32::GRAY),
-            );
+            let addr_arrow = if !self.sort_by_name {
+                if self.sort_ascending { " ▲" } else { " ▼" }
+            } else {
+                ""
+            };
+            let name_arrow = if self.sort_by_name {
+                if self.sort_ascending { " ▲" } else { " ▼" }
+            } else {
+                ""
+            };
+            let addr_label = format!("Address     {}", addr_arrow);
+            if ui
+                .selectable_label(
+                    !self.sort_by_name,
+                    RichText::new(addr_label).font(mono.clone()).color(Color32::GRAY),
+                )
+                .clicked()
+            {
+                if !self.sort_by_name {
+                    self.sort_ascending = !self.sort_ascending;
+                } else {
+                    self.sort_by_name = false;
+                    self.sort_ascending = true;
+                }
+            }
+            let name_label = format!("Name{}", name_arrow);
+            if ui
+                .selectable_label(
+                    self.sort_by_name,
+                    RichText::new(name_label).font(mono.clone()).color(Color32::GRAY),
+                )
+                .clicked()
+            {
+                if self.sort_by_name {
+                    self.sort_ascending = !self.sort_ascending;
+                } else {
+                    self.sort_by_name = true;
+                    self.sort_ascending = true;
+                }
+            }
         });
         ui.separator();
 

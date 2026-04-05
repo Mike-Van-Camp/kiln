@@ -33,6 +33,7 @@ pub struct HexView {
 
 impl HexView {
     /// Returns the currently selected byte offset, if any.
+    #[allow(dead_code)]
     pub fn selected_byte_offset(&self) -> Option<usize> {
         self.selected_byte
     }

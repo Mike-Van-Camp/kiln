@@ -215,11 +215,24 @@ impl GraphView {
 
         let scroll_delta = ui.input(|i| i.smooth_scroll_delta.y);
         if scroll_delta != 0.0 {
+            let old_zoom = self.zoom;
             let zoom_factor = 1.0 + scroll_delta * 0.002;
-            self.zoom = (self.zoom * zoom_factor).clamp(0.2, 5.0);
+            let new_zoom = (self.zoom * zoom_factor).clamp(0.2, 5.0);
+            self.zoom = new_zoom;
+
+            // Adjust pan so the point under the cursor stays fixed.
+            if let Some(cursor) = response.hover_pos() {
+                let origin = response.rect.min.to_vec2();
+                // World coordinate under cursor before zoom change:
+                let cursor_world =
+                    (cursor.to_vec2() - origin - self.pan_offset) / old_zoom;
+                // New pan_offset so cursor_world maps back to cursor:
+                self.pan_offset = cursor.to_vec2() - origin - cursor_world * new_zoom;
+            }
         }
 
-        let painter = ui.painter();
+        // Clip drawing to the canvas area so nodes don't overlap the toolbar.
+        let painter = ui.painter_at(response.rect);
         let canvas_origin = response.rect.min.to_vec2() + self.pan_offset;
 
         // ── edges (bezier or straight) ───────────────────────────────
@@ -251,14 +264,14 @@ impl GraphView {
                     painter.line_segment([prev, cur], stroke);
                     prev = cur;
                 }
-                draw_arrowhead(painter, mapped[1], mapped[2], edge.color, self.zoom);
+                draw_arrowhead(&painter, mapped[1], mapped[2], edge.color, self.zoom);
             } else if mapped.len() >= 2 {
                 let stroke = Stroke::new(1.5 * self.zoom, edge.color);
                 for w in mapped.windows(2) {
                     painter.line_segment([w[0], w[1]], stroke);
                 }
                 draw_arrowhead(
-                    painter,
+                    &painter,
                     mapped[mapped.len() - 2],
                     mapped[mapped.len() - 1],
                     edge.color,
@@ -385,7 +398,7 @@ impl GraphView {
 
         // ── minimap ──────────────────────────────────────────────────
         if self.show_minimap && !layout.nodes.is_empty() {
-            draw_minimap(painter, layout, &response.rect, self.pan_offset, self.zoom);
+            draw_minimap(&painter, layout, &response.rect, self.pan_offset, self.zoom);
         }
     }
 

@@ -21,6 +21,10 @@ pub struct HexView {
     pub offset: usize,
     /// Currently selected/clicked row offset.
     pub selected_row: Option<usize>,
+    /// Currently selected byte offset (finer granularity than `selected_row`).
+    pub selected_byte: Option<usize>,
+    /// Number of bytes in the current selection (for future range selection).
+    pub selected_byte_count: usize,
     /// Pending navigation request from context menu.
     pending_navigation: Option<u64>,
     /// Pending apply-type request from context menu.
@@ -28,6 +32,11 @@ pub struct HexView {
 }
 
 impl HexView {
+    /// Returns the currently selected byte offset, if any.
+    pub fn selected_byte_offset(&self) -> Option<usize> {
+        self.selected_byte
+    }
+
     /// Take the pending navigation address (if any), clearing it.
     pub fn take_pending_navigation(&mut self) -> Option<u64> {
         self.pending_navigation.take()
@@ -172,6 +181,8 @@ impl HexView {
                     // Track selection on click
                     if response.response.clicked() {
                         self.selected_row = Some(row_offset);
+                        self.selected_byte = Some(row_offset);
+                        self.selected_byte_count = 1;
                     }
 
                     // Right-click context menu
@@ -238,6 +249,74 @@ impl HexView {
                     }
                 }
             });
+
+        // Data inspector panel: show details when a row is selected
+        if let Some(sel_offset) = self.selected_byte {
+            if sel_offset < data.len() {
+                ui.separator();
+                Self::render_data_inspector(ui, data, sel_offset, &mono_font);
+            }
+        }
+    }
+
+    /// Render a data inspector panel showing the selected byte in multiple formats.
+    fn render_data_inspector(ui: &mut Ui, data: &[u8], offset: usize, mono_font: &FontId) {
+        let remaining = data.len() - offset;
+        let byte_val = data[offset];
+
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(format!("Offset: 0x{:08X}", offset))
+                    .font(mono_font.clone())
+                    .color(COLOR_ADDRESS),
+            );
+            ui.separator();
+            ui.label(
+                RichText::new(format!("u8: {}", byte_val))
+                    .font(mono_font.clone())
+                    .color(COLOR_HEX),
+            );
+            ui.separator();
+            ui.label(
+                RichText::new(format!("i8: {}", byte_val as i8))
+                    .font(mono_font.clone())
+                    .color(COLOR_HEX),
+            );
+            ui.separator();
+            if remaining >= 2 {
+                let val = u16::from_le_bytes([data[offset], data[offset + 1]]);
+                ui.label(
+                    RichText::new(format!("u16 LE: {}", val))
+                        .font(mono_font.clone())
+                        .color(COLOR_HEX),
+                );
+                ui.separator();
+            }
+            if remaining >= 4 {
+                let val = u32::from_le_bytes([
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
+                ]);
+                ui.label(
+                    RichText::new(format!("u32 LE: {}", val))
+                        .font(mono_font.clone())
+                        .color(COLOR_HEX),
+                );
+                ui.separator();
+            }
+            let ch = if byte_val.is_ascii_graphic() || byte_val == b' ' {
+                byte_val as char
+            } else {
+                '.'
+            };
+            ui.label(
+                RichText::new(format!("ASCII: '{}'", ch))
+                    .font(mono_font.clone())
+                    .color(COLOR_ASCII),
+            );
+        });
     }
 
     /// Check if there's an applied type at the given offset and produce overlay info.

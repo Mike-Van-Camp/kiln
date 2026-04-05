@@ -133,20 +133,6 @@ impl GraphView {
                 let svg = self.export_svg(analysis);
                 ui.ctx().copy_text(svg);
             }
-
-            ui.separator();
-
-            if ui.button("−").clicked() {
-                self.zoom = (self.zoom / 1.25).max(0.2);
-            }
-            ui.label(format!("{:.0}%", self.zoom * 100.0));
-            if ui.button("+").clicked() {
-                self.zoom = (self.zoom * 1.25).min(5.0);
-            }
-            if ui.button("Reset").clicked() {
-                self.zoom = 1.0;
-                self.pan_offset = Vec2::ZERO;
-            }
         });
 
         ui.separator();
@@ -295,17 +281,9 @@ impl GraphView {
         }
 
         // ── nodes ─────────────────────────────────────────────────────
-        // Use actual clamped font sizes to derive layout constants so the
-        // header text never overlaps instructions at low zoom levels.
-        let mono_font_size = (12.0 * self.zoom).max(6.0);
-        let header_font_size = (13.0 * self.zoom).max(7.0);
-        let mono_font = FontId::monospace(mono_font_size);
-        let header_font = FontId::monospace(header_font_size);
+        let mono_font = FontId::monospace((12.0 * self.zoom).max(6.0));
+        let header_font = FontId::monospace((13.0 * self.zoom).max(7.0));
         let hover_pos = response.hover_pos();
-
-        // Derive consistent spacing from the actual font sizes.
-        let header_area_height = header_font_size + 6.0; // 2px top + text + 4px bottom
-        let line_height = (mono_font_size + 3.0).max(mono_font_size * 1.3);
 
         let mut hovered_node: Option<u64> = None;
 
@@ -342,12 +320,7 @@ impl GraphView {
                 StrokeKind::Outside,
             );
 
-            // Skip text rendering if the node is too small to read.
-            if rect.height() < header_font_size {
-                continue;
-            }
-
-            let header_pos = Pos2::new(rect.min.x + 4.0 * self.zoom, rect.min.y + 2.0);
+            let header_pos = Pos2::new(rect.min.x + 4.0 * self.zoom, rect.min.y + 2.0 * self.zoom);
 
             let header_text = format!("0x{:08x}", node.block_addr);
 
@@ -359,22 +332,21 @@ impl GraphView {
                 Color32::from_rgb(100, 180, 255),
             );
 
-            let sep_y = rect.min.y + header_area_height;
-            if sep_y < rect.max.y {
-                painter.line_segment(
-                    [
-                        Pos2::new(rect.min.x + 2.0 * self.zoom, sep_y),
-                        Pos2::new(rect.max.x - 2.0 * self.zoom, sep_y),
-                    ],
-                    Stroke::new(0.5 * self.zoom, Color32::from_rgb(60, 60, 80)),
-                );
-            }
+            let sep_y = rect.min.y + 18.0 * self.zoom;
+            painter.line_segment(
+                [
+                    Pos2::new(rect.min.x + 2.0 * self.zoom, sep_y),
+                    Pos2::new(rect.max.x - 2.0 * self.zoom, sep_y),
+                ],
+                Stroke::new(0.5 * self.zoom, Color32::from_rgb(60, 60, 80)),
+            );
 
-            let text_start_y = sep_y + 2.0;
+            let text_start_y = sep_y + 3.0 * self.zoom;
+            let line_height = 15.0 * self.zoom;
 
             for (i, (addr, text)) in node.instructions.iter().enumerate() {
                 let y = text_start_y + i as f32 * line_height;
-                if y + mono_font_size > rect.max.y {
+                if y > rect.max.y {
                     break;
                 }
                 let text_pos = Pos2::new(rect.min.x + 4.0 * self.zoom, y);
@@ -416,21 +388,11 @@ impl GraphView {
         }
 
         // ── zoom indicator ───────────────────────────────────────────
-        let zoom_text = format!("{:.0}%", self.zoom * 100.0);
-        let zoom_font = FontId::proportional(12.0);
-        let zoom_pos = Pos2::new(response.rect.max.x - 10.0, response.rect.min.y + 10.0);
-        let galley = painter.layout_no_wrap(
-            zoom_text,
-            zoom_font,
-            Color32::from_rgb(150, 150, 150),
-        );
-        let text_rect = egui::Align2::RIGHT_TOP
-            .anchor_size(zoom_pos, galley.size())
-            .expand(4.0);
-        painter.rect_filled(text_rect, 3.0, Color32::from_rgba_premultiplied(20, 20, 30, 200));
-        painter.galley(
-            egui::Align2::RIGHT_TOP.anchor_size(zoom_pos, galley.size()).min,
-            galley,
+        painter.text(
+            Pos2::new(response.rect.max.x - 10.0, response.rect.min.y + 10.0),
+            egui::Align2::RIGHT_TOP,
+            format!("{:.0}%", self.zoom * 100.0),
+            FontId::proportional(12.0),
             Color32::from_rgb(150, 150, 150),
         );
 

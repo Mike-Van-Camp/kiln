@@ -366,12 +366,12 @@ impl HexView {
                                 ui.ctx().copy_text(format!("b\"{}\"", items));
                                 ui.close_menu();
                             }
-                            if ui.button("Copy as Raw Bytes").clicked() {
-                                let raw: String = sel_data
+                            if ui.button("Copy as Raw Hex").clicked() {
+                                let hex_encoded: String = sel_data
                                     .iter()
                                     .map(|b| format!("{:02x}", b))
                                     .collect();
-                                ui.ctx().copy_text(raw);
+                                ui.ctx().copy_text(hex_encoded);
                                 ui.close_menu();
                             }
                             ui.separator();
@@ -544,12 +544,10 @@ impl HexView {
 
             // u64 / i64 / f64
             if remaining >= 8 {
-                let mut le_bytes = [0u8; 8];
-                let mut be_bytes = [0u8; 8];
-                le_bytes.copy_from_slice(&data[offset..offset + 8]);
-                be_bytes.copy_from_slice(&data[offset..offset + 8]);
-                let le64 = u64::from_le_bytes(le_bytes);
-                let be64 = u64::from_be_bytes(be_bytes);
+                let mut bytes8 = [0u8; 8];
+                bytes8.copy_from_slice(&data[offset..offset + 8]);
+                let le64 = u64::from_le_bytes(bytes8);
+                let be64 = u64::from_be_bytes(bytes8);
                 ui.label(
                     RichText::new(format!("u64 LE: {}  BE: {}", le64, be64))
                         .font(mono_font.clone())
@@ -562,8 +560,8 @@ impl HexView {
                         .color(COLOR_HEX),
                 );
                 ui.separator();
-                let f_le = f64::from_le_bytes(le_bytes);
-                let f_be = f64::from_be_bytes(be_bytes);
+                let f_le = f64::from_le_bytes(bytes8);
+                let f_be = f64::from_be_bytes(bytes8);
                 ui.label(
                     RichText::new(format!("f64 LE: {:.6}  BE: {:.6}", f_le, f_be))
                         .font(mono_font.clone())
